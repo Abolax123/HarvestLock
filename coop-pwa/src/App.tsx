@@ -152,7 +152,7 @@ export default function App() {
     <>
       <header className="app-header">
         <h1>HarvestLock — Cooperative Dashboard</h1>
-        <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+        <div className="header-actions">
           <span className="tag">read-only reads · testnet</span>
           {walletAddress ? (
             <span className="wallet-address">{walletAddress.slice(0, 4)}…{walletAddress.slice(-4)}</span>
@@ -213,7 +213,7 @@ export default function App() {
 
         <section>
           <div className="detail-header">
-            <h2 style={{ margin: 0, fontFamily: "var(--display)", fontWeight: 600, fontSize: "1.1rem" }}>
+            <h2 className="section-title">
               Known commitments
             </h2>
             <button className="refresh-button" onClick={refreshList} disabled={listLoading}>
