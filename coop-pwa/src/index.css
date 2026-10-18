@@ -83,6 +83,12 @@ a {
   color: var(--bone-faint);
 }
 
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
 main {
   flex: 1;
   padding: 24px;
@@ -466,6 +472,13 @@ table.allocation-table th {
   gap: 12px;
   margin-bottom: 16px;
   flex-wrap: wrap;
+}
+
+.section-title {
+  margin: 0;
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: 1.1rem;
 }
 
 .detail-header .contract-id {
