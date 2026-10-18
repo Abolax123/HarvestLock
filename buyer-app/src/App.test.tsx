@@ -103,6 +103,18 @@ describe("App", () => {
     expect(screen.getByText("What you've locked")).toBeInTheDocument();
   });
 
+  it("shows loading and empty states while the commitments list is being fetched", async () => {
+    let resolveList!: (response: Response) => void;
+    fetchMock.mockReturnValueOnce(new Promise<Response>((resolve) => { resolveList = resolve; }));
+    render(<App />);
+
+    expect(screen.getByRole("status")).toHaveTextContent("Loading your commitments");
+    expect(screen.getByText("Look up a contract ID or select one of your commitments to view its details.")).toBeInTheDocument();
+
+    resolveList(jsonResponse([]));
+    expect(await screen.findByText(/Nothing locked yet/)).toBeInTheDocument();
+  });
+
   it("shows an error banner, not a crash, when the list fetch fails", async () => {
     fetchMock.mockResolvedValueOnce(jsonResponse({ error: "db down" }, false));
     render(<App />);
@@ -135,6 +147,30 @@ describe("App", () => {
     await user.click(screen.getByRole("button", { name: "Look up" }));
 
     expect(await screen.findByText(/Pending: advance 1/)).toBeInTheDocument();
+  });
+
+  it("names the commitment when a detail lookup fails before reaching the API", async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse([]));
+    fetchMock.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.type(screen.getByLabelText("Contract ID"), "CUNKNOWN");
+    await user.click(screen.getByRole("button", { name: "Look up" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Unable to load commitment CUNKNOWN: Failed to fetch");
+  });
+
+  it("shows a live loading state while a commitment lookup is pending", async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse([]));
+    fetchMock.mockReturnValueOnce(new Promise<Response>(() => {}));
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.type(screen.getByLabelText("Contract ID"), "CUNKNOWN");
+    await user.click(screen.getByRole("button", { name: "Look up" }));
+
+    expect(await screen.findByRole("status")).toHaveTextContent("Reading commitment CUNKNOWN from chain");
   });
 
   it("locks a Draft commitment: build -> sign -> submit -> refresh, end to end through the app", async () => {
