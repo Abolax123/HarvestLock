@@ -66,7 +66,30 @@ During `coop-pwa`'s browser check, one `GET /commitments/:contractId` call faile
 11. ~~Wire the contract's dispute-flagging methods (`flag_dispute`/`resolve_dispute`/`expire_dispute_window`)~~ — **done, API side**, 6 Sept 2026: see above. ~~No frontend has any UI for flagging or resolving a dispute yet~~ — **done**, 8 Sept 2026: `DisputeSection.tsx`, identical across `buyer-app`/`coop-pwa`/`warehouse-app` — see `TASKS.md`.
 
 ---
-*Last updated: 4 Oct 2026 (later same day) — `coop-pwa` now has a real UI
+*Last updated: 18 Oct 2026 — docs session covering four separate issues.
+(1) New `docs/reassign-buyer-sequence.md`: a Mermaid sequence diagram of
+the three-party `reassign_buyer` propose/sign/finalize flow, with
+per-step file references and the enforced edge cases, checked against
+this repo's routes/multiParty/db code and the contract's
+`reassign_buyer`/`require_once_each` rather than written from memory.
+(2) New repo-root `docs/contract-glossary.md`: every contract `Status`
+(12) and `Error` (38) variant in one plain-English sentence, verified
+against `HarvestLock-Contracts` main's `lib.rs`; notes the append-only
+discriminant guard and that the deployed Deployment 10 WASM predates
+errors 37–38. (3) A "Curl-only cookbook" section in `README.md`:
+read-only calls are pure `curl`, writes are `curl` + `stellar-cli`
+signing, and the staged multi-party middle step is called out honestly
+as not completable without an auth-entry-capable wallet. Writing it
+surfaced a real stale-comment bug fixed here: `server.ts`'s
+`NO_ARG_METHODS` comments still claimed `cancel`/`resolve_dispute` work
+by signing the same envelope once per wallet — they don't
+(`tx_bad_auth_extra`, documented in `README.md` since the staged flow
+landed) — corrected to point at the staged propose/sign routes.
+(4) `buyer-app`'s `CommitmentList.tsx` now owns all three list states
+(loading/error/empty) instead of `App.tsx` mounting it only on success,
+which had left first load blank; see `buyer-app/README.md`.
+
+Prior entry (4 Oct 2026, later same day) — `coop-pwa` now has a real UI
 for the allocation ledger (`AllocationLedgerSection.tsx`) — see "next
 steps" item 9 above and `coop-pwa/README.md`. Same category of gap as
 the entry below: PRD §4.8/§16.1's per-member salted-hash ledger has been

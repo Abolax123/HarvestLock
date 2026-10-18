@@ -42,16 +42,32 @@ const meta = {
   tags: ['autodocs'],
   argTypes: {
     commitments: { control: 'object' },
+    loading: { control: 'boolean' },
+    error: { control: 'text' },
     onSelect: { action: 'onSelect' },
   },
   args: {
     commitments: [],
+    loading: false,
+    error: null,
     onSelect: fn(),
   },
 } satisfies Meta<typeof CommitmentList>;
 
 export default meta;
 type Story = StoryObj<typeof meta>;
+
+export const Loading: Story = {
+  args: {
+    loading: true,
+  },
+};
+
+export const Error: Story = {
+  args: {
+    error: '/commitments -> 500: {"statusCode":500,"error":"Internal Server Error","message":"connection refused"}',
+  },
+};
 
 export const Empty: Story = {
   args: {
