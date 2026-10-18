@@ -61,6 +61,20 @@ function requireValidPublicKey(publicKey: string, fieldName: string): void {
 }
 
 /**
+ * Same discipline again, this time for row IDs: `pending_multisig_proposals.id`
+ * is a Postgres UUID column, so a proposalId that isn't a UUID makes the
+ * driver throw `invalid input syntax for type uuid` with no status code —
+ * an opaque 500 for what is plainly bad client input (issue #202). Format
+ * checked here (the schema's own declared shape) rather than letting the
+ * query fail, so the caller gets a message naming the field.
+ */
+function requireValidUuid(value: string, fieldName: string): void {
+  if (typeof value !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)) {
+    throw new BadRequestError(`${fieldName} must be a UUID, got ${value}`);
+  }
+}
+
+/**
  * CORS is a browser permission boundary, not API authentication. Require
  * deployments to name each frontend origin explicitly; an unset value
  * disables cross-origin access until a real frontend origin is known.
@@ -205,6 +219,15 @@ const MAX_REMAINDER_WINDOW_SECS = 60 * 60 * 24 * 30;
 // mainly a guard against a fat-fingered value.
 const MIN_DELIVERY_WINDOW_SECS = 60 * 60 * 24;
 const MAX_DELIVERY_WINDOW_SECS = 60 * 60 * 24 * 365;
+
+// The largest value initialize()'s i128 fields (total_amount, and
+// OracleConfig's denominated_amount) can carry. nativeToScVal throws a
+// plain Error for anything bigger, so an oversized digit string from a
+// caller used to surface as an opaque 500 — checked as a 400 up front,
+// same bug class as the malformed-address checks above (issue #201).
+// The u32 fields have their own ceilings where they're validated
+// (contractedQuantity against 2^32-1, bps fields against 10000).
+const I128_MAX = 2n ** 127n - 1n;
 
 // How long a proposal stays open for the other parties to sign before a
 // fresh one can be proposed instead. Generous, matching the ~24-hour
@@ -361,6 +384,15 @@ export async function buildServer() {
   // Deploys a fresh, uninitialized contract instance (deployer-paid — no
   // party auth required for a bare deploy). The caller still has to drive
   // /tx/initialize + /transactions/submit to actually bring it to life.
+  //
+  // Audited for the #201 bad-input sweep: this route carries no
+  // caller-supplied values at all — no params, no body fields (the
+  // deployer key and WASM hash come from deployment env, see
+  // stellar/deploy.ts) — so there is no malformed value for it to accept
+  // or 500 on beyond what Fastify itself rejects (malformed/unsupported
+  // JSON bodies get the body parser's own 400/415 before this handler
+  // runs). Its remaining failure modes are an operator misconfiguration
+  // (ConfigurationError, deliberately a 500) and the network itself.
   app.post("/commitments/deploy", async (_req, reply) => {
     const contractId = await deployContractInstance();
     return reply.code(201).send({ contractId });
@@ -383,20 +415,62 @@ export async function buildServer() {
       await requireNotBarred(b.buyer, "buyer");
       await requireNotBarred(b.cooperative, "cooperative");
 
+      // Audited for the #201 bad-input sweep. Every conversion below used
+      // to trust its input type and let the failure happen inside
+      // BigInt()/nativeToScVal(): a missing or non-numeric totalAmount,
+      // a non-numeric/NaN window value (NaN passes both range
+      // comparisons, then BigInt("abc") throws), a negative or
+      // non-integer advance bps, an oversized contractedQuantity, or an
+      // i128/u32 overflow all came back as opaque 500s. Each field now
+      // parses and range-checks its value up front, so every one of those
+      // is the caller's clear 400, never a 500.
+      let totalAmount: bigint;
+      if (typeof b.totalAmount !== "string" && typeof b.totalAmount !== "number") {
+        return reply.code(400).send({ error: `totalAmount must be an integer, got ${b.totalAmount}` });
+      }
+      try {
+        totalAmount = BigInt(b.totalAmount);
+      } catch {
+        return reply.code(400).send({ error: `totalAmount must be an integer, got ${b.totalAmount}` });
+      }
+      if (totalAmount <= 0n) {
+        return reply.code(400).send({ error: `totalAmount must be positive, got ${b.totalAmount}` });
+      }
+      if (totalAmount > I128_MAX) {
+        return reply.code(400).send({ error: `totalAmount is out of range for a 128-bit integer, got ${b.totalAmount}` });
+      }
+
+      for (const [field, value] of [
+        ["advance1Bps", b.advance1Bps],
+        ["advance2Bps", b.advance2Bps],
+      ] as const) {
+        if (!Number.isInteger(value) || value < 0 || value > 10_000) {
+          return reply.code(400).send({ error: `${field} must be an integer between 0 and 10000, got ${value}` });
+        }
+      }
+
       const claimWindowSecs = Number(b.claimWindowSecs);
-      if (claimWindowSecs < MIN_CLAIM_WINDOW_SECS || claimWindowSecs > MAX_CLAIM_WINDOW_SECS) {
+      if (!Number.isInteger(claimWindowSecs) || claimWindowSecs < MIN_CLAIM_WINDOW_SECS || claimWindowSecs > MAX_CLAIM_WINDOW_SECS) {
         return reply.code(400).send({
           error: `claimWindowSecs must be between ${MIN_CLAIM_WINDOW_SECS} and ${MAX_CLAIM_WINDOW_SECS} seconds, got ${b.claimWindowSecs}`,
         });
       }
       const remainderWindowSecs = Number(b.remainderWindowSecs);
-      if (remainderWindowSecs < MIN_REMAINDER_WINDOW_SECS || remainderWindowSecs > MAX_REMAINDER_WINDOW_SECS) {
+      if (
+        !Number.isInteger(remainderWindowSecs) ||
+        remainderWindowSecs < MIN_REMAINDER_WINDOW_SECS ||
+        remainderWindowSecs > MAX_REMAINDER_WINDOW_SECS
+      ) {
         return reply.code(400).send({
           error: `remainderWindowSecs must be between ${MIN_REMAINDER_WINDOW_SECS} and ${MAX_REMAINDER_WINDOW_SECS} seconds, got ${b.remainderWindowSecs}`,
         });
       }
       const deliveryWindowSecs = Number(b.deliveryWindowSecs);
-      if (deliveryWindowSecs < MIN_DELIVERY_WINDOW_SECS || deliveryWindowSecs > MAX_DELIVERY_WINDOW_SECS) {
+      if (
+        !Number.isInteger(deliveryWindowSecs) ||
+        deliveryWindowSecs < MIN_DELIVERY_WINDOW_SECS ||
+        deliveryWindowSecs > MAX_DELIVERY_WINDOW_SECS
+      ) {
         return reply.code(400).send({
           error: `deliveryWindowSecs must be between ${MIN_DELIVERY_WINDOW_SECS} and ${MAX_DELIVERY_WINDOW_SECS} seconds, got ${b.deliveryWindowSecs}`,
         });
@@ -405,9 +479,14 @@ export async function buildServer() {
       // narrowing here the way the three windows above have, since there's
       // no business judgment call to make on top of the contract's own
       // validation (unlike the windows, which are genuinely a product
-      // decision, not just mirroring).
-      if (!Number.isInteger(b.contractedQuantity) || b.contractedQuantity <= 0) {
-        return reply.code(400).send({ error: `contractedQuantity must be a positive integer, got ${b.contractedQuantity}` });
+      // decision, not just mirroring). The 2^32-1 ceiling isn't a
+      // product rule either, it's the u32 the contract (and
+      // nativeToScVal's encoding) can actually represent -- an oversized
+      // integer used to throw out of the encoder as a 500.
+      if (!Number.isInteger(b.contractedQuantity) || b.contractedQuantity <= 0 || b.contractedQuantity > 0xffff_ffff) {
+        return reply.code(400).send({
+          error: `contractedQuantity must be a positive integer (max 4294967295), got ${b.contractedQuantity}`,
+        });
       }
       if (
         !Array.isArray(b.gradePriceBps) ||
@@ -418,18 +497,39 @@ export async function buildServer() {
           error: `gradePriceBps must be a non-empty array of integers between 0 and 10000, got ${JSON.stringify(b.gradePriceBps)}`,
         });
       }
+      let parsedOracleConfig: {
+        oracleContract: string;
+        priceAsset: string;
+        maxAgeSecs: bigint;
+        denominatedAmount: bigint;
+      } | null = null;
       if (b.oracleConfig != null) {
         requireValidContractId(b.oracleConfig.oracleContract);
         if (typeof b.oracleConfig.priceAsset !== "string" || b.oracleConfig.priceAsset.trim().length === 0) {
           return reply.code(400).send({ error: "oracleConfig.priceAsset must be a non-empty string" });
         }
         const maxAgeSecs = Number(b.oracleConfig.maxAgeSecs);
-        if (!Number.isInteger(maxAgeSecs) || maxAgeSecs <= 0) {
+        // Safe-integer, not just integer: Number.isInteger("1e21" via
+        // Number(...)) is true, but the raw string would still make
+        // BigInt()/the u64 encoder throw later -- parse once here and
+        // pass the parsed value down, so validation and use can't drift.
+        // The typeof guard is because Number(true) is 1: without it a
+        // boolean would pass as a one-second window.
+        if (
+          (typeof b.oracleConfig.maxAgeSecs !== "string" && typeof b.oracleConfig.maxAgeSecs !== "number") ||
+          !Number.isSafeInteger(maxAgeSecs) ||
+          maxAgeSecs <= 0
+        ) {
           return reply.code(400).send({
             error: `oracleConfig.maxAgeSecs must be a positive integer, got ${b.oracleConfig.maxAgeSecs}`,
           });
         }
         let denominatedAmount: bigint;
+        if (typeof b.oracleConfig.denominatedAmount !== "string" && typeof b.oracleConfig.denominatedAmount !== "number") {
+          return reply.code(400).send({
+            error: `oracleConfig.denominatedAmount must be an integer, got ${b.oracleConfig.denominatedAmount}`,
+          });
+        }
         try {
           denominatedAmount = BigInt(b.oracleConfig.denominatedAmount);
         } catch {
@@ -442,6 +542,17 @@ export async function buildServer() {
             error: `oracleConfig.denominatedAmount must be positive, got ${b.oracleConfig.denominatedAmount}`,
           });
         }
+        if (denominatedAmount > I128_MAX) {
+          return reply.code(400).send({
+            error: `oracleConfig.denominatedAmount is out of range for a 128-bit integer, got ${b.oracleConfig.denominatedAmount}`,
+          });
+        }
+        parsedOracleConfig = {
+          oracleContract: b.oracleConfig.oracleContract,
+          priceAsset: b.oracleConfig.priceAsset,
+          maxAgeSecs: BigInt(maxAgeSecs),
+          denominatedAmount,
+        };
       }
 
       const xdr = await buildInvokeTransaction({
@@ -453,22 +564,18 @@ export async function buildServer() {
           cooperative: b.cooperative,
           warehouseOperator: b.warehouseOperator,
           token: b.token,
-          totalAmount: BigInt(b.totalAmount),
+          totalAmount,
           advance1Bps: b.advance1Bps,
           advance2Bps: b.advance2Bps,
-          claimWindowSecs: BigInt(b.claimWindowSecs),
-          remainderWindowSecs: BigInt(b.remainderWindowSecs),
-          deliveryWindowSecs: BigInt(b.deliveryWindowSecs),
+          // The parsed numbers, not the raw body values: Number("3.6e3")
+          // is a perfectly valid 3600-second window, but BigInt("3.6e3")
+          // throws -- validation and encoding must agree on the value.
+          claimWindowSecs: BigInt(claimWindowSecs),
+          remainderWindowSecs: BigInt(remainderWindowSecs),
+          deliveryWindowSecs: BigInt(deliveryWindowSecs),
           contractedQuantity: b.contractedQuantity,
           gradePriceBps: b.gradePriceBps,
-          oracleConfig: b.oracleConfig
-            ? {
-                oracleContract: b.oracleConfig.oracleContract,
-                priceAsset: b.oracleConfig.priceAsset,
-                maxAgeSecs: BigInt(b.oracleConfig.maxAgeSecs),
-                denominatedAmount: BigInt(b.oracleConfig.denominatedAmount),
-              }
-            : null,
+          oracleConfig: parsedOracleConfig,
         }),
       });
       return { xdr };
@@ -623,7 +730,11 @@ export async function buildServer() {
     }
     let totalBps = 0;
     for (const m of members) {
-      if (typeof m.phoneNumber !== "string" || m.phoneNumber.trim().length === 0) {
+      // `m?.` not `m.`: a JSON array can hold null/numbers/strings, and a
+      // null element used to crash on `.phoneNumber` (TypeError → 500)
+      // before this check ever ran (issue #203). Optional chaining makes
+      // every non-object element fail the same clear 400 instead.
+      if (typeof m?.phoneNumber !== "string" || m.phoneNumber.trim().length === 0) {
         return reply.code(400).send({ error: "every member needs a non-empty phoneNumber" });
       }
       if (!Number.isInteger(m.shareBps) || m.shareBps < 0 || m.shareBps > 10_000) {
@@ -671,6 +782,16 @@ export async function buildServer() {
   // for this commitment -- a valid state, not an error (see
   // getOracleConfig's doc comment for why this differs from
   // /allocation's "let AllocationNotSet propagate" convention).
+  //
+  // Audited for the #204 bad-input sweep: contractId is the only
+  // caller-supplied value this route (and /oracle-rate below) carries,
+  // and requireValidContractId already answers a malformed one with a
+  // clear 400 before anything touches the SDK or the chain -- consistent
+  // with every other read route, no fix needed. A well-formed but
+  // unknown/dead contract ID is a chain-read failure, not bad input, and
+  // deliberately still propagates (same convention as getCommitment on
+  // GET /commitments/:contractId). The tests for both routes in
+  // test/server.test.ts lock the 400 behavior in.
   app.get<{ Params: { contractId: string } }>("/commitments/:contractId/oracle-config", async (req) => {
     requireValidContractId(req.params.contractId);
     const config = await getOracleConfig(req.params.contractId);
@@ -883,7 +1004,24 @@ export async function buildServer() {
   }>("/commitments/:contractId/tx/propose/:proposalId/sign", async (req) => {
     const { contractId, proposalId } = req.params;
     requireValidContractId(contractId);
+    // Audited for the #202 bad-input sweep. Two values used to reach
+    // infrastructure unfiltered: a non-UUID proposalId made Postgres
+    // throw `invalid input syntax for type uuid` (500), and a
+    // missing/non-string/malformed signedEntryXdr was persisted as-is,
+    // only to explode later inside finalizeMultiPartyProposal's
+    // fromXDR() when the last entry was signed (500 at a completely
+    // different request, no less). Both are caller input and are now
+    // checked here as clear 400s before the lookup or any write.
+    requireValidUuid(proposalId, "proposalId");
     requireValidPublicKey(req.body.signerPublicKey, "signerPublicKey");
+    if (typeof req.body.signedEntryXdr !== "string" || req.body.signedEntryXdr.trim().length === 0) {
+      throw new BadRequestError("signedEntryXdr must be a non-empty string");
+    }
+    try {
+      xdr.SorobanAuthorizationEntry.fromXDR(req.body.signedEntryXdr, "base64");
+    } catch {
+      throw new BadRequestError("signedEntryXdr is not a valid base64 Soroban authorization entry");
+    }
 
     const proposal = await getProposalById(proposalId);
     if (!proposal || proposal.contract_id !== contractId) {
