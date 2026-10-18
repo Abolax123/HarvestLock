@@ -5,8 +5,9 @@ import { Keypair, StrKey, Address, xdr } from "@stellar/stellar-sdk";
 import { randomBytes } from "node:crypto";
 import { buildServer } from "../src/server.js";
 import { recordBuyerDefault } from "../src/db/reputation.js";
-import { createProposal } from "../src/db/pendingMultisigProposals.js";
 import { pool } from "../src/db/pool.js";
+import { MAX_PAGE_SIZE } from "../src/db/commitments.js";
+import { createProposal } from "../src/db/pendingMultisigProposals.js";
 
 /**
  * First HTTP-layer test coverage for server.ts — everything before this
@@ -28,6 +29,23 @@ import { pool } from "../src/db/pool.js";
 // generated once, not meant to resolve to anything real.
 const FAKE_CONTRACT_ID = "CBCEGSHJYB7MKQ7BMWM62LXW4SV2NWNLEYJT6GLGZS3EIV7LO73AZPJI";
 const FAKE_PUBLIC_KEY = "GAJLI2MLTLHYPF4H2SCHQ7TJI6XHMHKIG6N5ZHONSTCKK4SWMGLDNLI5";
+
+/** Seeds `count` fake cached rows with the given contract_id prefix, so
+ * pagination tests can walk real pages through the real route. Values
+ * satisfy 001_init.sql's CHECKs but are otherwise arbitrary; created_at
+ * is left to its default, so every row of one INSERT shares a single
+ * now() — exactly the timestamp tie the route's ORDER BY ... id tiebreak
+ * exists to break. Callers clean up by the same prefix in a finally. */
+async function seedCommitments(prefix: string, count: number): Promise<void> {
+  await pool.query(
+    `INSERT INTO commitments
+       (contract_id, buyer_address, cooperative_address, warehouse_address, token_address,
+        total_amount, advance1_bps, advance2_bps, claim_window_secs, status)
+     SELECT p.prefix || i, 'GBUYER', 'GCOOP', 'GWH', 'GCACHE', 1000, 1500, 2000, 3600, 'Locked'
+     FROM (SELECT $1::text AS prefix) p, generate_series(1, $2::int) i`,
+    [prefix, count],
+  );
+}
 
 /**
  * A syntactically valid base64 SorobanAuthorizationEntry — the sign route
@@ -148,6 +166,88 @@ describe("server (HTTP layer)", () => {
       expect(limited.json().length).toBeLessThanOrEqual(1);
     },
     15_000,
+  );
+
+  it(
+    "GET /commitments pages exactly at the page boundary (a full page, then one more)",
+    async () => {
+      // Issue #225's "done looks like": seed past one page and walk the
+      // boundary. Five rows: with limit=5 that is exactly one page, and
+      // with limit=2 it is one full page, a second full page, then one
+      // more — the two shapes a client's "load next page" logic turns on.
+      const prefix = "CTESTPAGE";
+      const total = 5;
+      await seedCommitments(prefix, total);
+      try {
+        // Exactly one page: the whole set fits, and the page after it is
+        // empty rather than an error or a repeat of the last page.
+        const onePage = await app.inject({
+          method: "GET",
+          url: `/commitments?limit=${total}&offset=0`,
+        });
+        expect(onePage.statusCode).toBe(200);
+        expect(onePage.json()).toHaveLength(total);
+
+        const pastTheEnd = await app.inject({
+          method: "GET",
+          url: `/commitments?limit=${total}&offset=${total}`,
+        });
+        expect(pastTheEnd.statusCode).toBe(200);
+        expect(pastTheEnd.json()).toHaveLength(0);
+
+        // One more than one page: 2 + 2 + 1 partitions the five rows —
+        // no gap, no duplicate across page edges. The dupes/skips this
+        // guards are real: every seeded row shares one created_at, and
+        // ORDER BY created_at alone let Postgres order ties differently
+        // per request.
+        const pages = [];
+        for (const offset of [0, 2, 4]) {
+          const res = await app.inject({
+            method: "GET",
+            url: `/commitments?limit=2&offset=${offset}`,
+          });
+          expect(res.statusCode).toBe(200);
+          pages.push(res.json() as { contract_id: string }[]);
+        }
+        expect(pages.map((p) => p.length)).toEqual([2, 2, 1]);
+
+        const walked = pages
+          .flat()
+          .map((c) => c.contract_id)
+          .filter((id) => id.startsWith(prefix));
+        expect(walked).toHaveLength(total);
+        expect(new Set(walked).size).toBe(total);
+      } finally {
+        await pool.query(`DELETE FROM commitments WHERE contract_id LIKE $1`, [`${prefix}%`]);
+      }
+    },
+    30_000,
+  );
+
+  it(
+    "GET /commitments clamps an oversized limit instead of returning an unbounded page",
+    async () => {
+      // The other half of issue #225: falling back on *invalid* limits
+      // still left any *valid* limit free to ask for the whole cache
+      // (limit=1000000). Seed MAX_PAGE_SIZE + 5 rows and prove the route
+      // caps the page at MAX_PAGE_SIZE rather than passing the requested
+      // number through to Postgres.
+      const prefix = "CTESTCLAMP";
+      await seedCommitments(prefix, MAX_PAGE_SIZE + 5);
+      try {
+        const res = await app.inject({
+          method: "GET",
+          url: "/commitments?limit=1000000&offset=0",
+        });
+        expect(res.statusCode).toBe(200);
+        const rows = res.json() as { contract_id: string }[];
+        expect(rows).toHaveLength(MAX_PAGE_SIZE);
+        expect(rows.every((c) => c.contract_id.startsWith(prefix))).toBe(true);
+      } finally {
+        await pool.query(`DELETE FROM commitments WHERE contract_id LIKE $1`, [`${prefix}%`]);
+      }
+    },
+    30_000,
   );
 
   it(

@@ -6,7 +6,7 @@ import { StrKey, Address, nativeToScVal, xdr } from "@stellar/stellar-sdk";
 import { getAllocation, getCommitment, getOracleConfig, getOracleRate, type Commitment } from "./stellar/client.js";
 import { deployContractInstance, initializeArgs } from "./stellar/deploy.js";
 import { buildInvokeTransaction, submitSignedTransaction } from "./stellar/tx.js";
-import { upsertCommitment, listCommitments } from "./db/commitments.js";
+import { upsertCommitment, listCommitments, DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE } from "./db/commitments.js";
 import { pool } from "./db/pool.js";
 import { HttpError, BadRequestError, ForbiddenError, ConfigurationError } from "./errors.js";
 import { applyReputationConsequences, getStanding } from "./reputation.js";
@@ -1148,10 +1148,16 @@ export async function buildServer() {
   // "invalid input syntax for type bigint". That's the exact call
   // buyer-app/coop-pwa make (no query string at all), so the list route
   // was broken for them. Non-finite or out-of-range values now fall back
-  // to the documented defaults instead of reaching the driver.
+  // to the documented defaults instead of reaching the driver. A finite
+  // limit is also clamped to MAX_PAGE_SIZE: falling back on bad values
+  // alone still left a caller free to ask for limit=1000000, which is the
+  // unbounded read issue #225 was filed against.
   const parsedLimit = Number(req.query.limit);
   const parsedOffset = Number(req.query.offset);
-  const limit = Number.isFinite(parsedLimit) && parsedLimit > 0 ? Math.floor(parsedLimit) : 20;
+  const limit =
+    Number.isFinite(parsedLimit) && parsedLimit > 0
+      ? Math.min(Math.floor(parsedLimit), MAX_PAGE_SIZE)
+      : DEFAULT_PAGE_SIZE;
   const offset = Number.isFinite(parsedOffset) && parsedOffset >= 0 ? Math.floor(parsedOffset) : 0;
   const commitments = await listCommitments({ limit, offset });
   return reply.send(commitments);
