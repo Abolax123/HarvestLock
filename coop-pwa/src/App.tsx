@@ -17,6 +17,9 @@ export default function App() {
   const [commitments, setCommitments] = useState<CommitmentSummary[]>([]);
   const [listError, setListError] = useState<string | null>(null);
   const [listLoading, setListLoading] = useState(true);
+  const [listMoreLoading, setListMoreLoading] = useState(false);
+  const [listMoreError, setListMoreError] = useState<string | null>(null);
+  const [hasMoreCommitments, setHasMoreCommitments] = useState(false);
 
   const [lookupInput, setLookupInput] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -49,13 +52,32 @@ export default function App() {
   const refreshList = useCallback(() => {
     setListLoading(true);
     setListError(null);
+    setListMoreError(null);
     listCommitments()
-      .then(setCommitments)
+      .then((page) => {
+        setCommitments(page);
+        setHasMoreCommitments(page.length === 20);
+      })
       .catch((err: unknown) =>
         setListError(`Unable to load known commitments: ${err instanceof Error ? err.message : String(err)}`),
       )
       .finally(() => setListLoading(false));
   }, []);
+
+  const loadMoreCommitments = useCallback(() => {
+    if (listMoreLoading || !hasMoreCommitments) return;
+    setListMoreLoading(true);
+    setListMoreError(null);
+    listCommitments({ offset: commitments.length })
+      .then((page) => {
+        setCommitments((current) => [...current, ...page]);
+        setHasMoreCommitments(page.length === 20);
+      })
+      .catch((err: unknown) =>
+        setListMoreError(`Unable to load more commitments: ${err instanceof Error ? err.message : String(err)}`),
+      )
+      .finally(() => setListMoreLoading(false));
+  }, [commitments.length, hasMoreCommitments, listMoreLoading]);
 
   useEffect(() => {
     refreshList();
@@ -232,7 +254,14 @@ export default function App() {
           ) : listError ? (
             <div className="error-banner" role="alert">{listError}</div>
           ) : (
-            <CommitmentList commitments={commitments} onSelect={loadDetail} />
+            <CommitmentList
+              commitments={commitments}
+              onSelect={loadDetail}
+              hasMore={hasMoreCommitments}
+              loadingMore={listMoreLoading}
+              loadMoreError={listMoreError}
+              onLoadMore={loadMoreCommitments}
+            />
           )}
         </section>
       </main>
