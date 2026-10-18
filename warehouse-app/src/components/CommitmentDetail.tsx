@@ -4,6 +4,16 @@ import { AddressChip } from "./AddressChip";
 import { ConfirmDeliveryForm } from "./ConfirmDeliveryForm";
 import { DisputeSection } from "./DisputeSection";
 
+const deadlineFormatter = new Intl.DateTimeFormat("en-GB", {
+  dateStyle: "medium",
+  timeStyle: "short",
+  timeZone: "UTC",
+});
+
+function formatDeadline(unixSecs: string): string {
+  return `${deadlineFormatter.format(new Date(Number(unixSecs) * 1000))} UTC`;
+}
+
 function formatBps(bps: number): string {
   return `${(bps / 100).toFixed(2)}%`;
 }
@@ -142,7 +152,7 @@ export function CommitmentDetail({
         </div>
         <div>
           <dt>Delivery deadline</dt>
-          <dd>{new Date(Number(commitment.delivery_deadline) * 1000).toLocaleString()}</dd>
+          <dd>{formatDeadline(commitment.delivery_deadline)}</dd>
         </div>
       </dl>
 
