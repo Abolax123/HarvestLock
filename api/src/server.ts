@@ -111,12 +111,12 @@ const NO_ARG_METHODS = new Set([
   // adjustment) — see its own route below, same reason initialize and
   // reassign_buyer aren't in this set either.
   "settle",
-  // Needs TWO signatures on the same submitted envelope (buyer AND
-  // cooperative — see lib.rs's cancel()), not one. The generic build/
-  // submit flow already supports this: the caller signs the XDR from
-  // /tx/cancel with the first party's wallet, then signs that *same*
-  // signed envelope again with the second party's before POSTing it to
-  // /transactions/submit — nothing method-specific needed here.
+  // Needs TWO parties' Soroban auth (buyer AND cooperative — see lib.rs's
+  // cancel()), not one. Serving the method here only builds the unsigned
+  // XDR; a single classic signature per wallet is NOT enough, and naively
+  // signing the same envelope twice fails on submission (tx_bad_auth_extra,
+  // see api/README.md). The separate-wallets path is the staged
+  // /tx/cancel/propose → /tx/propose/:id/sign pair below.
   "cancel",
   // Two-phase funding / default-forfeiture additions (lib.rs). All four
   // are single-signer or fully permissionless — none need the multi-party
@@ -127,12 +127,12 @@ const NO_ARG_METHODS = new Set([
   "expire_remainder_window", // permissionless — the buyer-default sweep
   "reclaim_on_nondelivery", // buyer-gated — the seller-non-delivery reclaim
   // Dispute flagging (lib.rs). flag_dispute has its own route below (it
-  // takes an argument). resolve_dispute needs all THREE parties' auth on
-  // the same submitted envelope — same "sign it again" generic support
-  // as cancel/reassign_buyer, nothing extra needed here — and also has
-  // its own staged /tx/resolve-dispute/propose route below for the
-  // separate-wallets case. expire_dispute_window is permissionless, same
-  // shape as expire_remainder_window.
+  // takes an argument). resolve_dispute needs all THREE parties' auth —
+  // same multi-party caveat as cancel above (signing the envelope once per
+  // party does not work), served here only so its unsigned XDR can be
+  // built; the separate-wallets path is its staged
+  // /tx/resolve-dispute/propose route below. expire_dispute_window is
+  // permissionless, same shape as expire_remainder_window.
   "resolve_dispute",
   "expire_dispute_window",
 ]);

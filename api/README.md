@@ -8,6 +8,10 @@ warehouse receipt attestation intake, plus SDP integration (deployed, not
 forked — PRD §17.1). None of that last group is built yet — see `HANDOFF.md`
 for what's real today versus still ahead.
 
+Every contract `Status` and `Error` variant a caller can see — a `status`
+field's value, or an `Error(Contract, #N)` rejection — is decoded into
+plain English in [`../docs/contract-glossary.md`](../docs/contract-glossary.md).
+
 ## Architecture: the API never holds a party's private key
 
 Every write (`lock`, `claim_advance_1`, `settle`, ...) is split into two
@@ -59,6 +63,11 @@ entries) with the same table and the same sign/finalize logic — neither
 `src/stellar/multiParty.ts`'s propose/finalize functions nor the sign
 route care how many pending entries a proposal has, they just iterate
 the array.
+
+A Mermaid sequence diagram of the full three-party `reassign_buyer` walk
+(propose → each other party signs → finalize → submit), with per-step
+file/line references and the enforced edge cases, is in
+[`docs/reassign-buyer-sequence.md`](./docs/reassign-buyer-sequence.md).
 
 1. **Propose** — `POST /commitments/:contractId/tx/cancel/propose { proposerPublicKey }`
    or `POST /commitments/:contractId/tx/reassign-buyer/propose { proposerPublicKey, newBuyer }`.
@@ -411,6 +420,199 @@ npm run dev
 `sha256sum` on `HarvestLock-Contracts/target/wasm32v1-none/release/harvestlock_escrow.wasm`,
 or cross-check against a deployed instance with
 `stellar contract fetch --id <CONTRACT_ID> --network testnet`.
+
+## Curl-only cookbook (nothing but curl, plus `stellar-cli` to sign)
+
+For an integrator who doesn't have Node tooling installed. Every **read**
+here is plain `curl`. Every **write** is: `curl` builds the unsigned
+transaction → the party's own key signs it → `curl` submits it. Signing uses
+[`stellar-cli`](https://developers.stellar.org/docs/tools/cli) — a
+standalone binary, not Node tooling — which is fine for the single-signer
+paths below. The one thing curl + `stellar-cli` alone *cannot* complete is a
+staged multi-party call (`cancel`, `reassign_buyer`, `resolve_dispute`),
+because each other party has to sign a single Soroban **auth entry**, not a
+whole envelope — that needs a wallet exposing `signAuthEntry` (Freighter) or
+the SDK; the per-step curl shapes are still shown in §7. Any rejection that
+comes back as `Error(Contract, #N)` is decoded in
+[`../docs/contract-glossary.md`](../docs/contract-glossary.md).
+
+Shell variables used throughout:
+
+```sh
+API=http://localhost:3000   # or wherever the API you're calling runs
+TOKEN=CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC  # testnet native XLM (Stellar Asset Contract)
+```
+
+`jq` is used below to pull fields out of responses; any JSON tool works — or
+just read the output by eye.
+
+### 1. Liveness
+
+```sh
+curl -s "$API/health"
+# {"ok":true,"checks":{"api":"ok","database":"ok"}}   (503 if the DB is down)
+```
+
+### 2. Three funded testnet identities
+
+```sh
+stellar keys generate buyer        --network testnet --fund
+stellar keys generate cooperative  --network testnet --fund
+stellar keys generate warehouse    --network testnet --fund
+
+BUYER=$(stellar keys address buyer)
+COOPERATIVE=$(stellar keys address cooperative)
+WAREHOUSE=$(stellar keys address warehouse)
+
+# for §7
+stellar keys generate incoming-buyer --network testnet --fund
+NEW_BUYER=$(stellar keys address incoming-buyer)
+```
+
+The `--fund` flag hits friendbot; the raw equivalent, if you already have
+G-addresses, is `curl -s "https://friendbot.stellar.org/?addr=$BUYER"`.
+Addresses must be *funded/created* accounts — an unfunded key fails
+on-chain with a storage error, not a signature error.
+
+### 3. Deploy a fresh escrow instance
+
+One contract instance = one commitment. Deployer-paid; no party auth.
+
+```sh
+CID=$(curl -s -X POST "$API/commitments/deploy" | jq -r .contractId)
+echo "$CID"
+```
+
+### 4. Initialize it (buyer signs)
+
+```sh
+curl -s -X POST "$API/commitments/$CID/tx/initialize" \
+  -H 'content-type: application/json' \
+  -d "{
+    \"buyer\": \"$BUYER\",
+    \"cooperative\": \"$COOPERATIVE\",
+    \"warehouseOperator\": \"$WAREHOUSE\",
+    \"token\": \"$TOKEN\",
+    \"totalAmount\": \"1000000000\",
+    \"advance1Bps\": 1500,
+    \"advance2Bps\": 2000,
+    \"claimWindowSecs\": \"86400\",
+    \"remainderWindowSecs\": \"604800\",
+    \"deliveryWindowSecs\": \"10368000\",
+    \"contractedQuantity\": 1000,
+    \"gradePriceBps\": [10000],
+    \"sourcePublicKey\": \"$BUYER\"
+  }" | jq -r .xdr > /tmp/init.xdr
+
+stellar tx sign --network testnet --sign-with-key buyer < /tmp/init.xdr > /tmp/init.signed.xdr
+
+curl -s -X POST "$API/transactions/submit" \
+  -H 'content-type: application/json' \
+  -d "{\"xdr\": \"$(cat /tmp/init.signed.xdr)\", \"refreshContractId\": \"$CID\"}"
+# {"status":"SUCCESS","hash":"..."}
+```
+
+Window bounds are enforced API-side before anything is built: `claimWindowSecs`
+1 h–90 d, `remainderWindowSecs` 1 h–30 d, `deliveryWindowSecs` 1 d–365 d.
+`oracleConfig` is optional — omit it for a plain deal (see the oracle
+section above).
+
+Built transactions carry a short time bound (60 s; 300 s for a finalized
+proposal), so sign and submit promptly, or rebuild the XDR.
+
+### 5. Lock the deposit (buyer signs)
+
+`lock` is one of the no-argument lifecycle methods, so it uses the generic
+`/tx/:method` route. Only the deposit (`advance1Bps + advance2Bps`) is
+escrowed here; the remainder is funded later via `fund_remainder`.
+
+```sh
+curl -s -X POST "$API/commitments/$CID/tx/lock" \
+  -H 'content-type: application/json' \
+  -d "{\"sourcePublicKey\": \"$BUYER\"}" | jq -r .xdr > /tmp/lock.xdr
+
+stellar tx sign --network testnet --sign-with-key buyer < /tmp/lock.xdr > /tmp/lock.signed.xdr
+
+curl -s -X POST "$API/transactions/submit" \
+  -H 'content-type: application/json' \
+  -d "{\"xdr\": \"$(cat /tmp/lock.signed.xdr)\", \"refreshContractId\": \"$CID\"}"
+```
+
+Other no-arg methods work the same way, e.g.
+`/tx/claim_advance_1` (sign with the cooperative key),
+`/tx/fund_remainder`, `/tx/settle` (permissionless). Argument-taking
+methods have their own routes: `/tx/confirm-delivery`,
+`/tx/flag-dispute`, `/tx/set-allocation`, `/tx/reassign-buyer`. Optional
+`oracleConfig` on `initialize` (for FX settlement) takes
+`{oracleContract, priceAsset, maxAgeSecs, denominatedAmount}` — see §6's
+read routes and the oracle section above.
+
+### 6. Read state (pure curl)
+
+```sh
+curl -s "$API/commitments/$CID" | jq          # live chain read (source of truth)
+curl -s "$API/commitments?limit=10" | jq      # Postgres-cached list
+curl -s "$API/commitments/$CID/allocation" | jq
+curl -s "$API/commitments/$CID/oracle-config" | jq
+curl -s "$API/parties/$BUYER/standing" | jq
+```
+
+After a successful lock, the live read's `status` is `Locked` (glossary:
+[`../docs/contract-glossary.md`](../docs/contract-glossary.md)).
+
+### 7. Staged multi-party calls — curl can start and finish, not sign the middle
+
+`reassign_buyer` (three parties), `cancel` (two), and `resolve_dispute`
+(three) are staged: a proposal row is created, each other party signs their
+own auth entry from their own wallet, then the proposer finalizes through
+the **existing** `/transactions/submit`. curl does the propose, the polling,
+and the finalize; the one `<signed entry XDR>` placeholder has to come from
+an auth-entry-capable wallet. Full diagram:
+[`docs/reassign-buyer-sequence.md`](./docs/reassign-buyer-sequence.md).
+
+```sh
+# Propose (only the current buyer may propose a reassignment)
+curl -s -X POST "$API/commitments/$CID/tx/reassign-buyer/propose" \
+  -H 'content-type: application/json' \
+  -d "{\"proposerPublicKey\": \"$BUYER\", \"newBuyer\": \"$NEW_BUYER\"}" > /tmp/proposal.json
+
+PROPOSAL_ID=$(jq -r .id /tmp/proposal.json)
+jq -r '.pending_entries[] | .address + " " + .entry_xdr' /tmp/proposal.json
+
+# Poll from any viewer (poll every ~10 s while waiting)
+curl -s "$API/commitments/$CID/tx/reassign-buyer/propose" | jq
+
+# Each pending signer: wallet signs ITS OWN entry_xdr (Freighter signAuthEntry,
+# not signTransaction), then posts it back
+curl -s -X POST "$API/commitments/$CID/tx/propose/$PROPOSAL_ID/sign" \
+  -H 'content-type: application/json' \
+  -d "{\"signerPublicKey\": \"$COOPERATIVE\", \"signedEntryXdr\": \"<signed entry XDR>\"}" | jq
+
+# Repeat for the incoming buyer. Once all entries are signed, status flips to
+# "ready" and ready_xdr appears:
+curl -s "$API/commitments/$CID/tx/reassign-buyer/propose" \
+  | jq -r .proposal.ready_xdr > /tmp/ready.xdr
+
+# The proposer signs ready_xdr classically and submits with
+# completeProposalId so the proposal stops showing as active:
+stellar tx sign --network testnet --sign-with-key buyer < /tmp/ready.xdr > /tmp/ready.signed.xdr
+curl -s -X POST "$API/transactions/submit" \
+  -H 'content-type: application/json' \
+  -d "{\"xdr\": \"$(cat /tmp/ready.signed.xdr)\", \"refreshContractId\": \"$CID\", \"completeProposalId\": \"$PROPOSAL_ID\"}"
+```
+
+### 8. What the common failures mean
+
+| Response | Meaning |
+|---|---|
+| `400` | Malformed contract ID / address, out-of-range window, unknown method — rejected before any network call. |
+| `403` | A business rule: wrong party proposing, or a barred buyer/cooperative on `initialize`. |
+| `429` | Rate limit (100 req/min per IP, global). Sleep the `retry-after` seconds — it's the time left in the current window, not a fixed cooldown. See the rate-limiting section above. |
+| `500` with `Error(Contract, #N)` | The contract rejected it (e.g. wrong status for that method). Find `N` in [`../docs/contract-glossary.md`](../docs/contract-glossary.md). |
+
+CORS is a browser concern only — curl doesn't enforce it, so a curl call
+succeeding says nothing about whether a browser frontend's origin is
+allow-listed (see the CORS section above).
 
 ## Testing
 
