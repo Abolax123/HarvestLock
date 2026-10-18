@@ -96,6 +96,22 @@ describe("App", () => {
     expect(screen.getByText("Commitments to attest")).toBeInTheDocument();
   });
 
+  it("shows a loading state while the list request is in flight", async () => {
+    let resolveList: (value: Response) => void = () => {};
+    const listPromise = new Promise<Response>((res) => {
+      resolveList = res;
+    });
+    fetchMock.mockResolvedValue(listPromise);
+    render(<App />);
+
+    expect(screen.getByText("Loading commitments…")).toBeInTheDocument();
+    expect(screen.queryByTitle(summary.contract_id)).not.toBeInTheDocument();
+
+    resolveList(jsonResponse([summary]));
+    await waitFor(() => expect(screen.getByTitle(summary.contract_id)).toBeInTheDocument());
+    expect(screen.queryByText("Loading commitments…")).not.toBeInTheDocument();
+  });
+
   it("shows an error banner, not a crash, when the list fetch fails", async () => {
     fetchMock.mockResolvedValueOnce(jsonResponse({ error: "db down" }, false));
     render(<App />);

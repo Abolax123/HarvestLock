@@ -17,6 +17,22 @@ function formatBps(bps: number): string {
  */
 type Action = "checkpoint" | "deliver" | null;
 
+/*
+ * Loading/error/empty states (UX audit, #182):
+ *   • Loading   — owned by App.tsx: while `detailLoading` is true it renders
+ *     <div className="loading-state">Reading {contractId} from chain…</div>;
+ *     in-flight actions show "Marking checkpoint…"/"Confirming…" on disabled
+ *     buttons instead of going blank.
+ *   • Error     — `detailError` (chain lookup failure) and `actionError`
+ *     (signing/submission failure) both render the shared `error-banner` with
+ *     the specific upstream message (api.ts's `get`/`post` surface
+ *     `${path} -> ${status}: ${body}`), never a generic "something went wrong".
+ *   • Empty     — there is no separate empty state: a loaded commitment always
+ *     renders its detail card, and a commitment that doesn't exist surfaces as
+ *     a 404 error banner rather than an empty page. Before a contract ID has
+ *     been looked up, the lookup form stays on screen.
+ */
+
 function nextAction(c: CommitmentDetailType): Action {
   if (c.status === "Advance1Released") return "checkpoint";
   if (c.status === "ReadyForDelivery" && c.remainder_funded) return "deliver";
