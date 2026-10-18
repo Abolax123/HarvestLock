@@ -103,9 +103,18 @@ export function getCommitment(contractId: string): Promise<CommitmentDetail> {
   return get<CommitmentDetail>(`/commitments/${encodeURIComponent(contractId)}`);
 }
 
-/** Postgres-cached list — the only way to enumerate commitments, since the chain has no such query. */
-export function listCommitments(): Promise<CommitmentSummary[]> {
-  return get<CommitmentSummary[]>("/commitments");
+/**
+ * Postgres-cached list — the only way to enumerate commitments, since the
+ * chain has no such query. Pass `{ limit, offset }` to fetch one page of
+ * the list instead of the first page: the API (api/src/db/commitments.ts)
+ * defaults to 20 per page and clamps anything above its hard maximum, so
+ * callers should treat a page of exactly `limit` rows as "maybe more",
+ * not "done" — there is no total in the response shape.
+ */
+export function listCommitments(page?: { limit: number; offset: number }): Promise<CommitmentSummary[]> {
+  if (!page) return get<CommitmentSummary[]>("/commitments");
+  const query = new URLSearchParams({ limit: String(page.limit), offset: String(page.offset) });
+  return get<CommitmentSummary[]>(`/commitments?${query.toString()}`);
 }
 
 /** Builds unsigned XDR for a no-argument lifecycle method (`lock`, `settle`). The caller's wallet signs it next. */

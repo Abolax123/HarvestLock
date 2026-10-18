@@ -14,10 +14,19 @@ import { CommitmentDetail } from "./components/CommitmentDetail";
 import { CommitmentList } from "./components/CommitmentList";
 import { CreateCommitmentForm, type CreateCommitmentFields, parseGradePriceBps } from "./components/CreateCommitmentForm";
 
+/** One page of the commitments list. Mirrors the API's default page size
+ * (api/src/db/commitments.ts's DEFAULT_PAGE_SIZE) — the API clamps above
+ * its own maximum regardless, so this only picks the size the UI walks
+ * the list in. */
+const PAGE_SIZE = 20;
+
 export default function App() {
   const [commitments, setCommitments] = useState<CommitmentSummary[]>([]);
   const [listError, setListError] = useState<string | null>(null);
   const [listLoading, setListLoading] = useState(true);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [loadMoreError, setLoadMoreError] = useState<string | null>(null);
 
   const [lookupInput, setLookupInput] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -37,13 +46,39 @@ export default function App() {
   const refreshList = useCallback(() => {
     setListLoading(true);
     setListError(null);
-    listCommitments()
-      .then(setCommitments)
+    setLoadMoreError(null);
+    listCommitments({ limit: PAGE_SIZE, offset: 0 })
+      .then((firstPage) => {
+        setCommitments(firstPage);
+        setHasMore(firstPage.length === PAGE_SIZE);
+      })
       .catch((err: unknown) =>
         setListError(`Unable to load your commitments: ${err instanceof Error ? err.message : String(err)}`),
       )
       .finally(() => setListLoading(false));
   }, []);
+
+  // Fetch the next page and append it. The list response carries no
+  // total, so the heuristic is "a full page means maybe more, a short
+  // page means done" — the same one warehouse-app's paginated list
+  // already uses. A failed load-more keeps every page already shown and
+  // reports under the list (an initial-load failure, by contrast,
+  // replaces the whole section, handled above).
+  const loadMore = useCallback(() => {
+    setLoadingMore(true);
+    setLoadMoreError(null);
+    listCommitments({ limit: PAGE_SIZE, offset: commitments.length })
+      .then((nextPage) => {
+        setCommitments((prev) => [...prev, ...nextPage]);
+        setHasMore(nextPage.length === PAGE_SIZE);
+      })
+      .catch((err: unknown) =>
+        setLoadMoreError(
+          `Unable to load more commitments: ${err instanceof Error ? err.message : String(err)}`,
+        ),
+      )
+      .finally(() => setLoadingMore(false));
+  }, [commitments.length]);
 
   useEffect(() => {
     refreshList();
@@ -236,7 +271,16 @@ export default function App() {
           ) : listError ? (
             <div className="error-banner" role="alert">{listError}</div>
           ) : (
-            <CommitmentList commitments={commitments} onSelect={loadDetail} />
+            <>
+              <CommitmentList
+                commitments={commitments}
+                onSelect={loadDetail}
+                hasMore={hasMore}
+                loadingMore={loadingMore}
+                onLoadMore={loadMore}
+              />
+              {loadMoreError && <div className="error-banner" role="alert">{loadMoreError}</div>}
+            </>
           )}
         </section>
       </main>
