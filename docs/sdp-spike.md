@@ -1,20 +1,21 @@
-# SDP spike — upstream SDP on testnet, a real phone-provisioned split payout
+# SDP spike — upstream SDP on testnet, simulated phone onboarding
 
-Closes `ROADMAP.md`'s Phase 1 (Testnet tranche) item: *"SDP integration:
-deploy (do not fork, PRD §17.1) SDP, get one real phone-number-provisioned
-wallet, execute one split payout to it."*
+This is a partial spike toward `ROADMAP.md`'s Phase 1 (Testnet tranche)
+item: *"SDP integration: deploy (do not fork, PRD §17.1) SDP, get one real
+phone-number-provisioned wallet, execute one split payout to it."* The
+deployment and testnet transactions below are real, but the phone numbers
+are reserved examples, SMS ran in `DRY_RUN`, and passkey registration used
+a generated key rather than a browser ceremony. **This does not meet the
+roadmap item's real-phone requirement, which remains open.**
 
-**Done, with one honest caveat** (18 Oct 2026, testnet). The platform is
-deployed unmodified from the upstream image, phone-provisioned wallets are
-real SDP embedded wallets (each is a Soroban smart-wallet contract, created
-from a phone number and a passkey), and the split payout is a real on-chain
-transaction verified against Horizon. The caveat, stated up front and
-explained in full below: **the passkey ceremony was exercised through the
-same server API the wallet SDK calls, with a generated P-256 key, rather
-than a real browser WebAuthn ceremony, and SMS ran in SDP's `DRY_RUN`
-mode** — no real phone ever received a real text. The gap that remains is
-a real phone, a real SMS provider and a real browser passkey — not
-platform capability.
+**What was verified** (18 Oct 2026, testnet): the upstream platform ran
+unmodified, the real SDP API provisioned embedded smart-wallet contracts
+using generated P-256 keys, and SDP submitted split-payout transactions
+that were verified against Horizon. **What was not verified:** onboarding
+a real person's phone number, delivery of an invitation SMS, or a browser
+WebAuthn ceremony. No real phone received a message. Those steps still
+require an opted-in test recipient, an SMS provider, and a browser wallet
+SDK ceremony.
 
 ## What this is, and what it deliberately isn't
 
@@ -28,7 +29,7 @@ No application code was written for the spike.
 |---|---|
 | SDP deploy, unmodified | **Real** — upstream image, upstream migrations, unmodified binaries |
 | Tenant, distribution account, on-chain classic payout | **Real** — three batches, all transactions verifiable on Horizon (hashes below) |
-| Phone-provisioned wallet | **Real** — embedded smart-wallet contracts deployed per member, `POST /embedded-wallets` driven through the real API |
+| Phone-provisioned wallet | **Partial** — embedded smart-wallet contracts deployed per reserved example number through `POST /embedded-wallets`; no phone was contacted |
 | Passkey (WebAuthn) ceremony | **Simulated** — the SDK-facing endpoint was called with a generated P-256 public key; no browser, no authenticator |
 | SMS / email delivery | **Dry run** — SDP `DRY_RUN` senders; messages written, nothing sent |
 | KYC / TIRM screening, anchor cash-out, mainnet | **Not attempted** — see "What this doesn't cover" |

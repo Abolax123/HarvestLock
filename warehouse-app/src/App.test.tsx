@@ -65,10 +65,10 @@ const detail: CommitmentDetail = {
   dispute_deadline: "0",
 };
 
-function jsonResponse(body: unknown, ok = true) {
+function jsonResponse(body: unknown, ok = true, status = ok ? 200 : 500) {
   return {
     ok,
-    status: ok ? 200 : 500,
+    status,
     json: () => Promise.resolve(body),
     text: () => Promise.resolve(JSON.stringify(body)),
   } as Response;
@@ -119,6 +119,13 @@ describe("App", () => {
     expect(await screen.findByText(/-> 500/)).toBeInTheDocument();
   });
 
+  it("shows the empty state when the list request succeeds with no commitments", async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse([]));
+    render(<App />);
+
+    expect(await screen.findByText(/Nothing to attest yet/)).toBeInTheDocument();
+  });
+
   it("loads detail when a cached row is clicked", async () => {
     fetchMock.mockResolvedValueOnce(jsonResponse([summary]));
     fetchMock.mockResolvedValueOnce(jsonResponse(detail));
@@ -144,6 +151,44 @@ describe("App", () => {
     await user.click(screen.getByRole("button", { name: "Look up" }));
 
     expect(await screen.findByRole("button", { name: "Mark mid-season checkpoint" })).toBeInTheDocument();
+  });
+
+  it("shows a detail loading state while a lookup is in flight", async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse([]));
+    let resolveDetail: (value: Response) => void = () => {};
+    fetchMock.mockReturnValueOnce(
+      new Promise<Response>((res) => {
+        resolveDetail = res;
+      }),
+    );
+    const user = userEvent.setup();
+    render(<App />);
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    await user.type(screen.getByLabelText("Contract ID"), "CLOOKUP");
+    await user.click(screen.getByRole("button", { name: "Look up" }));
+
+    expect(screen.getByText("Reading CLOOKUP from chain…")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Mark mid-season checkpoint" })).not.toBeInTheDocument();
+
+    resolveDetail(jsonResponse(detail));
+    expect(await screen.findByRole("button", { name: "Mark mid-season checkpoint" })).toBeInTheDocument();
+    expect(screen.queryByText("Reading CLOOKUP from chain…")).not.toBeInTheDocument();
+  });
+
+  it("shows the specific not-found response when a detail lookup fails", async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse([]));
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({ error: "contract not found on chain" }, false, 404),
+    );
+    const user = userEvent.setup();
+    render(<App />);
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    await user.type(screen.getByLabelText("Contract ID"), "CUNKNOWN");
+    await user.click(screen.getByRole("button", { name: "Look up" }));
+
+    expect(await screen.findByText(/\/commitments\/CUNKNOWN -> 404:.*contract not found on chain/)).toBeInTheDocument();
   });
 
   it("marks the checkpoint: build -> sign -> submit -> refresh, end to end through the app", async () => {
