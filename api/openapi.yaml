@@ -518,13 +518,13 @@ components:
         cooperative: { type: string }
         warehouseOperator: { type: string }
         token: { type: string }
-        totalAmount: { type: string, description: Integer amount in stroops, sent as a decimal string. }
-        advance1Bps: { type: integer }
-        advance2Bps: { type: integer }
-        claimWindowSecs: { type: string }
-        remainderWindowSecs: { type: string }
-        deliveryWindowSecs: { type: string }
-        contractedQuantity: { type: integer, minimum: 1 }
+        totalAmount: { type: string, description: Integer amount in stroops, sent as a decimal string. Must be positive and fit an i128. }
+        advance1Bps: { type: integer, minimum: 0, maximum: 10000 }
+        advance2Bps: { type: integer, minimum: 0, maximum: 10000 }
+        claimWindowSecs: { type: string, description: Integer seconds, minimum 3600, maximum 7776000. }
+        remainderWindowSecs: { type: string, description: Integer seconds, minimum 3600, maximum 2592000. }
+        deliveryWindowSecs: { type: string, description: Integer seconds, minimum 86400, maximum 31536000. }
+        contractedQuantity: { type: integer, minimum: 1, maximum: 4294967295 }
         gradePriceBps:
           type: array
           minItems: 1
