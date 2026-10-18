@@ -159,6 +159,9 @@ function getAllocation(contractId: string): Promise<{ members: AllocationMember[
 export async function getAllocationLedger(contractId: string): Promise<AllocationMember[] | null> {
   try {
     const { members } = await getAllocation(contractId);
+    if (!Array.isArray(members)) {
+      throw new Error(`Invalid allocation ledger response for ${contractId}: expected a members array`);
+    }
     return members;
   } catch (err) {
     if (err instanceof Error && /AllocationNotSet|Error\(Contract, #23\)/.test(err.message)) {

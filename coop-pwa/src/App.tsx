@@ -51,7 +51,9 @@ export default function App() {
     setListError(null);
     listCommitments()
       .then(setCommitments)
-      .catch((err: unknown) => setListError(err instanceof Error ? err.message : String(err)))
+      .catch((err: unknown) =>
+        setListError(`Unable to load known commitments: ${err instanceof Error ? err.message : String(err)}`),
+      )
       .finally(() => setListLoading(false));
   }, []);
 
@@ -68,7 +70,7 @@ export default function App() {
       .then(setDetail)
       .catch((err: unknown) => {
         setDetail(null);
-        setDetailError(err instanceof Error ? err.message : String(err));
+        setDetailError(`Unable to load commitment ${contractId}: ${err instanceof Error ? err.message : String(err)}`);
       })
       .finally(() => setDetailLoading(false));
   }, []);
@@ -191,25 +193,30 @@ export default function App() {
           </button>
         </form>
 
-        {selectedId && (
-          <section>
-            {detailLoading && <div className="loading-state">Reading {selectedId} from chain…</div>}
-            {detailError && <div className="error-banner">{detailError}</div>}
-            {detail && !detailLoading && (
-              <CommitmentDetail
-                commitment={detail}
-                contractId={selectedId}
-                walletAddress={walletAddress}
-                onClaim={handleClaim}
-                claimingTranche={claimingTranche}
-                claimError={claimError}
-                onCancelled={() => loadDetail(selectedId)}
-                onReassigned={() => loadDetail(selectedId)}
-                onDisputeChanged={() => loadDetail(selectedId)}
-              />
-            )}
-          </section>
-        )}
+        <section aria-label="Commitment details">
+          {!selectedId && (
+            <div className="empty-state">Look up a contract ID or select a known commitment to view its details.</div>
+          )}
+          {detailLoading && (
+            <div className="loading-state" role="status" aria-live="polite">
+              Reading commitment {selectedId} from chain…
+            </div>
+          )}
+          {detailError && <div className="error-banner" role="alert">{detailError}</div>}
+          {selectedId && detail && !detailLoading && (
+            <CommitmentDetail
+              commitment={detail}
+              contractId={selectedId}
+              walletAddress={walletAddress}
+              onClaim={handleClaim}
+              claimingTranche={claimingTranche}
+              claimError={claimError}
+              onCancelled={() => loadDetail(selectedId)}
+              onReassigned={() => loadDetail(selectedId)}
+              onDisputeChanged={() => loadDetail(selectedId)}
+            />
+          )}
+        </section>
 
         <section>
           <div className="detail-header">
@@ -220,8 +227,13 @@ export default function App() {
               {listLoading ? "Refreshing…" : "Refresh"}
             </button>
           </div>
-          {listError && <div className="error-banner">{listError}</div>}
-          {!listError && !listLoading && <CommitmentList commitments={commitments} onSelect={loadDetail} />}
+          {listLoading ? (
+            <div className="loading-state" role="status" aria-live="polite">Loading known commitments…</div>
+          ) : listError ? (
+            <div className="error-banner" role="alert">{listError}</div>
+          ) : (
+            <CommitmentList commitments={commitments} onSelect={loadDetail} />
+          )}
         </section>
       </main>
       {import.meta.env.VITE_BUILD_SHA && (
