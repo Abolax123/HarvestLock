@@ -5,12 +5,18 @@ import { ReassignBuyerSection } from "./ReassignBuyerSection";
 import { DisputeSection } from "./DisputeSection";
 import { AddressChip } from "./AddressChip";
 
+const deadlineFormatter = new Intl.DateTimeFormat("en-GB", {
+  dateStyle: "medium",
+  timeStyle: "short",
+  timeZone: "UTC",
+});
+
 function formatDeadline(unixSecs: string): string {
   const n = Number(unixSecs);
   // The contract stores 0 as "unset" — release_advance_N hasn't run yet,
   // so no claim window exists to show. Not an error, not epoch-1970.
   if (n === 0) return "not yet opened";
-  return new Date(n * 1000).toLocaleString();
+  return `${deadlineFormatter.format(new Date(n * 1000))} UTC`;
 }
 
 function formatBps(bps: number): string {
