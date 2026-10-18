@@ -53,4 +53,36 @@ describe("CommitmentList", () => {
     expect(onSelect).toHaveBeenCalledWith(summary.contract_id);
     expect(screen.getByText("Locked")).toBeInTheDocument();
   });
+
+  it("offers 'Load more' only while the caller says another page may exist, and asks for it on click", async () => {
+    const onLoadMore = vi.fn();
+    const user = userEvent.setup();
+    const { rerender } = render(
+      <CommitmentList commitments={[summary]} onSelect={vi.fn()} hasMore onLoadMore={onLoadMore} />,
+    );
+
+    const button = screen.getByRole("button", { name: "Load more" });
+    await user.click(button);
+    expect(onLoadMore).toHaveBeenCalledTimes(1);
+
+    // Short page / exhausted: the caller flips hasMore off and the
+    // control disappears rather than offering an empty next fetch.
+    rerender(<CommitmentList commitments={[summary]} onSelect={vi.fn()} hasMore={false} onLoadMore={onLoadMore} />);
+    expect(screen.queryByRole("button", { name: "Load more" })).not.toBeInTheDocument();
+  });
+
+  it("disables 'Load more' and says so while the next page is in flight", () => {
+    render(
+      <CommitmentList
+        commitments={[summary]}
+        onSelect={vi.fn()}
+        hasMore
+        loadingMore
+        onLoadMore={vi.fn()}
+      />,
+    );
+
+    const button = screen.getByRole("button", { name: "Loading more…" });
+    expect(button).toBeDisabled();
+  });
 });

@@ -119,7 +119,8 @@ main {
 }
 
 .lookup button,
-.refresh-button {
+.refresh-button,
+.load-more-button {
   background: var(--pine);
   color: var(--bone);
   border: none;
@@ -132,9 +133,15 @@ main {
 }
 
 .lookup button:disabled,
-.refresh-button:disabled {
+.refresh-button:disabled,
+.load-more-button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.load-more-button {
+  display: block;
+  margin: 12px auto 0;
 }
 
 .wallet-button {
