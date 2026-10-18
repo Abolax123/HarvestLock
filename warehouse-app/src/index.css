@@ -113,7 +113,12 @@ main {
 }
 
 .lookup button,
-.refresh-button {
+.refresh-button,
+/* Styled like .refresh-button rather than left as an unstyled UA default
+   (measured 80x21px at 360px): it is the same list-pagination control as
+   Refresh, and 21px is below the 24x24 tap-target floor this app's mobile
+   pass holds its other controls to. */
+.load-more-button {
   background: var(--pine);
   color: var(--bone);
   border: none;
@@ -126,7 +131,8 @@ main {
 }
 
 .lookup button:disabled,
-.refresh-button:disabled {
+.refresh-button:disabled,
+.load-more-button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
@@ -165,6 +171,23 @@ main {
 .action-button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+/* DisputeSection (feature added to this app after the other two) copied
+   its markup from buyer-app/coop-pwa but these two rules were never
+   copied along with it, so "Flag a dispute"/"Approve resolution"
+   rendered as the gold primary button and its status paragraphs carried
+   default UA margins. Same rules as the other two copies. */
+.action-button.secondary {
+  background: transparent;
+  color: var(--bone);
+  border: 1px solid var(--void-line);
+}
+
+.cancel-status {
+  color: var(--bone-dim);
+  font-size: 0.85rem;
+  margin: 0 0 10px;
 }
 
 .error-banner {
