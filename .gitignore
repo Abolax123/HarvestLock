@@ -24,4 +24,7 @@ Thumbs.db
 *.log
 npm-debug.log*
 .vercel
-.env*
+
+# Playwright (e2e)
+test-results/
+playwright-report/
