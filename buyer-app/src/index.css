@@ -379,7 +379,8 @@ main {
 .badge[data-status="Locked"],
 .badge[data-status="Advance1Released"],
 .badge[data-status="CheckpointPassed"],
-.badge[data-status="Advance2Released"] {
+.badge[data-status="Advance2Released"],
+.badge[data-status="ReadyForDelivery"] {
   border-color: var(--gold);
   color: var(--gold-bright);
 }
@@ -392,6 +393,7 @@ main {
 
 .badge[data-status="Cancelled"],
 .badge[data-status="Defaulted"],
+.badge[data-status="Forfeited"],
 .badge[data-status="Disputed"] {
   border-color: var(--signal);
   color: #ef9c8c;

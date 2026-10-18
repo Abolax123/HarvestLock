@@ -61,3 +61,61 @@ describe("api non-ok error formatting", () => {
     await expect(getCommitment("CABC")).rejects.toThrow("/commitments/CABC -> 502: ");
   });
 });
+
+/** An ok fetch response — only the two fields a successful get/post touches. */
+function ok(body: unknown): Response {
+  return { ok: true, status: 200, json: () => Promise.resolve(body) } as Response;
+}
+
+/**
+ * Issue #197: get/post retry a transient network failure (fetch rejecting
+ * — a dropped connection, not a server response) with bounded exponential
+ * backoff, mirroring api/src/stellar/retry.ts. These are warehouse-app-only
+ * (the other two apps' copies don't retry), which is why they live in this
+ * file's own block rather than in the shared verbatim section above.
+ *
+ * The delays are real (500ms/1s at the defaults, not fake timers) —
+ * deliberately, so the tests exercise the actual timer path a flaky
+ * mobile connection would, not a mocked-out stand-in for it.
+ */
+describe("api transient-network retry", () => {
+  beforeEach(() => {
+    vi.stubGlobal("fetch", vi.fn());
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("get recovers from one transient network failure without surfacing an error", async () => {
+    vi.mocked(fetch)
+      .mockRejectedValueOnce(new TypeError("Failed to fetch"))
+      .mockResolvedValueOnce(ok({ status: "Draft" }));
+
+    await expect(getCommitment("CABC")).resolves.toEqual({ status: "Draft" });
+    expect(fetch).toHaveBeenCalledTimes(2);
+  }, 10_000);
+
+  it("post gets the same retry treatment as get", async () => {
+    vi.mocked(fetch)
+      .mockRejectedValueOnce(new TypeError("Failed to fetch"))
+      .mockResolvedValueOnce(ok({ status: "SUCCESS", hash: "abc" }));
+
+    await expect(submitTx("SIGNED_XDR")).resolves.toEqual({ status: "SUCCESS", hash: "abc" });
+    expect(fetch).toHaveBeenCalledTimes(2);
+  }, 10_000);
+
+  it("still surfaces a persistent network failure as an error, after the bounded attempts", async () => {
+    vi.mocked(fetch).mockRejectedValue(new TypeError("Failed to fetch"));
+
+    await expect(getCommitment("CABC")).rejects.toThrow("Failed to fetch");
+    expect(fetch).toHaveBeenCalledTimes(3);
+  }, 10_000);
+
+  it("does not retry a real non-ok response — the server answered, so there's nothing transient to wait out", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(notOk(500, "boom"));
+
+    await expect(getCommitment("CABC")).rejects.toThrow("/commitments/CABC -> 500: boom");
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+});

@@ -975,6 +975,93 @@ describe("server (HTTP layer)", () => {
     },
     15_000,
   );
+
+  /**
+   * Issue #205 — bad-input audit of the dispute routes. The malformed
+   * contract ID case was already covered above; these lock in the same
+   * discipline for the two other ways a bad request used to fall through
+   * to an unhandled 500:
+   *
+   * 1. a bad/missing/non-string sourcePublicKey reached the SDK's
+   *    Keypair.fromPublicKey() (via server.getAccount()), which throws a
+   *    plain Error with no status code — 500;
+   * 2. a POST with no body at all left req.body undefined and crashed
+   *    reading a field off it — TypeError, also 500.
+   *
+   * Both are client-input errors, so both must be 400 with a message
+   * naming the field. The first sweep covers the routes the issue names
+   * (flag-dispute and the generic no-arg path resolve_dispute/
+   * expire_dispute_window go through) plus every other tx builder that
+   * takes a sourcePublicKey, per the issue's "applied everywhere it
+   * should be".
+   */
+  describe("dispute-route bad-input audit (400s, never unhandled 500s)", () => {
+    const tx = `/commitments/${FAKE_CONTRACT_ID}/tx`;
+
+    // One otherwise-valid payload per route; only sourcePublicKey varies.
+    it.each([
+      ["flag-dispute", `${tx}/flag-dispute`, { flagger: FAKE_PUBLIC_KEY }],
+      ["the generic no-arg route (resolve_dispute)", `${tx}/resolve_dispute`, {}],
+      ["the generic no-arg route (expire_dispute_window)", `${tx}/expire_dispute_window`, {}],
+      [
+        "initialize",
+        `${tx}/initialize`,
+        {
+          buyer: FAKE_PUBLIC_KEY,
+          cooperative: FAKE_PUBLIC_KEY,
+          warehouseOperator: FAKE_PUBLIC_KEY,
+          token: FAKE_CONTRACT_ID,
+          totalAmount: "1000000000",
+          advance1Bps: 1500,
+          advance2Bps: 2000,
+          claimWindowSecs: "3600",
+          remainderWindowSecs: "86400",
+          deliveryWindowSecs: "86400",
+          contractedQuantity: 1_000,
+          gradePriceBps: [10_000],
+        },
+      ],
+      ["confirm-delivery", `${tx}/confirm-delivery`, { deliveredQuantity: 500, gradeIndex: 0 }],
+      ["set-allocation", `${tx}/set-allocation`, { members: [{ phoneNumber: "+2348012345678", shareBps: 5_000 }] }],
+      ["reassign-buyer", `${tx}/reassign-buyer`, { newBuyer: FAKE_PUBLIC_KEY }],
+    ])("rejects a malformed sourcePublicKey on %s before touching the network", async (_route, url, payload) => {
+      const res = await app.inject({
+        method: "POST",
+        url,
+        payload: { ...payload, sourcePublicKey: "not-a-real-address" },
+      });
+      expect(res.statusCode).toBe(400);
+      expect(res.json().message).toMatch(/sourcePublicKey is not a valid public key/);
+    });
+
+    // The same field, but absent or the wrong type rather than
+    // malformed — StrKey's validator answers false for both, so both
+    // must land on the same 400 rather than reach the SDK.
+    it.each([
+      ["a missing sourcePublicKey", { flagger: FAKE_PUBLIC_KEY }],
+      ["a non-string sourcePublicKey", { flagger: FAKE_PUBLIC_KEY, sourcePublicKey: 42 }],
+    ])("rejects %s on flag-dispute with 400, not 500", async (_label, payload) => {
+      const res = await app.inject({ method: "POST", url: `${tx}/flag-dispute`, payload });
+      expect(res.statusCode).toBe(400);
+      expect(res.json().message).toMatch(/sourcePublicKey is not a valid public key/);
+    });
+
+    // No Content-Type header, no payload at all: Fastify leaves the body
+    // undefined. The preValidation normalization in server.ts turns that
+    // into an empty object so each route's own field validation answers
+    // (flag-dispute names `flagger`, the generic route names
+    // `sourcePublicKey`, propose names `proposerPublicKey`) — anything
+    // but the old TypeError 500.
+    it.each([
+      ["flag-dispute", `${tx}/flag-dispute`],
+      ["the generic no-arg route (resolve_dispute)", `${tx}/resolve_dispute`],
+      ["the generic no-arg route (expire_dispute_window)", `${tx}/expire_dispute_window`],
+      ["resolve-dispute/propose", `${tx}/resolve-dispute/propose`],
+    ])("answers a POST with no body at all on %s with 400, not a TypeError 500", async (_route, url) => {
+      const res = await app.inject({ method: "POST", url });
+      expect(res.statusCode).toBe(400);
+    });
+  });
 });
 
 /**

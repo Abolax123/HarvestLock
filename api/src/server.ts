@@ -42,6 +42,18 @@ function requireValidContractId(contractId: string): void {
   }
 }
 
+/**
+ * The same discipline for every public key a request carries (party
+ * addresses, transaction source accounts): a malformed one used to reach
+ * the SDK's Keypair/Address decoding, which throws a plain Error with no
+ * status code — an opaque 500 for what is unambiguously bad client
+ * input, exactly like the contract-ID case above. StrKey's own validator
+ * again, not a regex, and it also handles missing/non-string values
+ * (isValid returns false rather than throwing), so `undefined` and `42`
+ * fail here as a 400 instead of crashing further down. `fieldName` names
+ * the offending field in the message, since routes can carry more than
+ * one address.
+ */
 function requireValidPublicKey(publicKey: string, fieldName: string): void {
   if (!StrKey.isValidEd25519PublicKey(publicKey)) {
     throw new BadRequestError(`${fieldName} is not a valid public key: ${publicKey}`);
@@ -318,6 +330,21 @@ export async function buildServer() {
     return reply.code(statusCode).send({ statusCode, error: STATUS_CODES[statusCode], message });
   });
 
+  // Fastify leaves `req.body` undefined for a request that declares no
+  // Content-Type at all (an unsupported type is already a 415, and a
+  // declared-but-empty JSON body already a 400 — both Fastify's own
+  // handling, before any route code runs). Every handler below reads
+  // fields off `req.body` directly, so that absence used to crash with
+  // "Cannot read properties of undefined (reading '<field>')" — an
+  // unhandled 500 for what is just a request that forgot its body.
+  // Normalizing to an empty object lets each route's own field checks
+  // answer with their normal, clear 400 instead. Found in the dispute-
+  // route bad-input audit (issue #205): a bare POST to
+  // /tx/flag-dispute with no body 500'd exactly this way.
+  app.addHook("preValidation", async (req) => {
+    if (req.body === undefined) req.body = {};
+  });
+
   app.get("/health", async (_req, reply) => {
     let database: "ok" | "unavailable" = "ok";
     try {
@@ -350,6 +377,9 @@ export async function buildServer() {
       requireValidPublicKey(b.cooperative, "cooperative");
       requireValidPublicKey(b.warehouseOperator, "warehouseOperator");
       requireValidContractId(b.token);
+      // The transaction source account the unsigned XDR is built against
+      // — same always-validate rule as every address above.
+      requireValidPublicKey(b.sourcePublicKey, "sourcePublicKey");
       await requireNotBarred(b.buyer, "buyer");
       await requireNotBarred(b.cooperative, "cooperative");
 
@@ -453,6 +483,12 @@ export async function buildServer() {
       if (!NO_ARG_METHODS.has(method)) {
         return reply.code(400).send({ error: `unknown or unsupported method: ${method}` });
       }
+      // The generic no-arg route is what resolve_dispute and
+      // expire_dispute_window go through (along with every other no-arg
+      // lifecycle transition). A malformed sourcePublicKey used to reach
+      // server.getAccount() in the SDK and come back an opaque 500 --
+      // same bug class as the contract ID above (issue #205).
+      requireValidPublicKey(req.body.sourcePublicKey, "sourcePublicKey");
       const xdr = await buildInvokeTransaction({
         contractId,
         method,
@@ -476,6 +512,7 @@ export async function buildServer() {
       const { contractId } = req.params;
       requireValidContractId(contractId);
       requireValidPublicKey(req.body.newBuyer, "newBuyer");
+      requireValidPublicKey(req.body.sourcePublicKey, "sourcePublicKey");
 
       const xdr = await buildInvokeTransaction({
         contractId,
@@ -506,6 +543,7 @@ export async function buildServer() {
     if (!Number.isInteger(gradeIndex) || gradeIndex < 0) {
       return reply.code(400).send({ error: `gradeIndex must be a non-negative integer, got ${gradeIndex}` });
     }
+    requireValidPublicKey(req.body.sourcePublicKey, "sourcePublicKey");
 
     const unsignedXdr = await buildInvokeTransaction({
       contractId,
@@ -532,6 +570,7 @@ export async function buildServer() {
       const { contractId } = req.params;
       requireValidContractId(contractId);
       requireValidPublicKey(req.body.flagger, "flagger");
+      requireValidPublicKey(req.body.sourcePublicKey, "sourcePublicKey");
 
       const xdr = await buildInvokeTransaction({
         contractId,
@@ -595,6 +634,7 @@ export async function buildServer() {
     if (totalBps > 10_000) {
       return reply.code(400).send({ error: `members' shareBps sum to ${totalBps}, over the 10000 bps ceiling` });
     }
+    requireValidPublicKey(req.body.sourcePublicKey, "sourcePublicKey");
 
     const staged = stageAllocationMembers(members);
     const unsignedXdr = await buildInvokeTransaction({

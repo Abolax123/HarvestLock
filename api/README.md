@@ -710,7 +710,10 @@ which the live end-to-end test caught as a failed assertion, not a crash.
   background poller yet, so the list view can go stale for commitments no
   one has viewed. Acceptable for now, worth revisiting once there's real
   usage. The reputation consequences above inherit the exact same gap,
-  for the exact same reason.
+  for the exact same reason. Revisited 18 Oct 2026 (#186) and kept as-is;
+  see `../docs/audits/2026-10-18-commitments-cache-refresh-revisit.md`
+  for the evidence, revisit triggers, and the pre-scoped smallest version
+  of the job.
 - The appeals process behind reputation's bar: the contact
   (`samuelojetunde898@gmail.com`) is documented on `site/roles.html`;
   there's no inbox automation or reinstatement workflow here yet,
