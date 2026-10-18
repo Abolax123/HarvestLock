@@ -2,13 +2,39 @@ import type { CommitmentSummary } from "../api";
 import { StatusBadge } from "./StatusBadge";
 import { AddressChip } from "./AddressChip";
 
+/**
+ * Renders all three list states itself — in flight, failed, and
+ * genuinely empty — rather than leaving the caller to decide whether to
+ * mount it at all. Before this, `App.tsx` only mounted the component once
+ * `listLoading` was false and `listError` was null, so the whole "What
+ * you've locked" section rendered as a blank gap on first load (nothing
+ * at all, not even "loading") and an error only showed as a banner in the
+ * section above it. Keeping the states here makes each one reviewable in
+ * isolation (see CommitmentList.stories.tsx and
+ * CommitmentList.test.tsx) and keeps `App.tsx` from having to know which
+ * one wins.
+ */
 export function CommitmentList({
   commitments,
   onSelect,
+  loading = false,
+  error = null,
 }: {
   commitments: CommitmentSummary[];
   onSelect: (contractId: string) => void;
+  loading?: boolean;
+  error?: string | null;
 }) {
+  if (loading) {
+    return <div className="loading-state">Loading commitments…</div>;
+  }
+
+  if (error) {
+    // `api.ts` throws `${path} -> ${status}: ${body}` — specific, not a
+    // generic "something went wrong" (see api.ts's get/post).
+    return <div className="error-banner">{error}</div>;
+  }
+
   if (commitments.length === 0) {
     return (
       <div className="empty-state">

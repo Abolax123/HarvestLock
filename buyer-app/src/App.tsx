@@ -224,8 +224,7 @@ export default function App() {
               {listLoading ? "Refreshing…" : "Refresh"}
             </button>
           </div>
-          {listError && <div className="error-banner">{listError}</div>}
-          {!listError && !listLoading && <CommitmentList commitments={commitments} onSelect={loadDetail} />}
+          <CommitmentList commitments={commitments} loading={listLoading} error={listError} onSelect={loadDetail} />
         </section>
       </main>
       {import.meta.env.VITE_BUILD_SHA && (
