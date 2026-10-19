@@ -18,6 +18,30 @@ describe("StatusBadge", () => {
     render(<StatusBadge status="Settled" />);
     expect(screen.getByText("Settled")).toHaveAttribute("data-status", "Settled");
   });
+
+  it("renders every real contract status label and sets data-status", () => {
+    const statuses = [
+      "Draft",
+      "Locked",
+      "Advance1Released",
+      "CheckpointPassed",
+      "Advance2Released",
+      "ReadyForDelivery",
+      "Delivered",
+      "Settled",
+      "Cancelled",
+      "Defaulted",
+      "Forfeited",
+      "Disputed",
+    ];
+
+    for (const s of statuses) {
+      render(<StatusBadge status={s} />);
+      const el = screen.getByText(s);
+      expect(el).toBeInTheDocument();
+      expect(el).toHaveAttribute("data-status", s);
+    }
+  });
 });
 
 // The status -> colour mapping lives in index.css, not in this component,
