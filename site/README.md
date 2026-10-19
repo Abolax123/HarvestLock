@@ -41,12 +41,32 @@ it does not inspect rendered pixels or replace a browser-based page audit.
 
 ## Running it
 
+Requires Node `^20.19.0 || >=22.12.0` — every dev dependency's own
+engines floor (vite 8, oxlint). Verified in a clean checkout under Node
+20.19: dev, build, preview, typecheck, lint, and `npm run check:contrast`
+all pass there. CI runs Node 24 (`.github/workflows/site.yml`).
+
 ```bash
-npm install
+npm ci
+cp .env.example .env   # optional — only for the Status section's live badge
 npm run dev       # http://localhost:5173
-npm run build     # production build to dist/
+npm run build     # production build to dist/ (typechecks: tsc -b && vite build)
 npm run preview   # serve the production build locally
 ```
+
+`.env` really is optional — `VITE_API_URL` is its only knob, and
+`src/hooks/useLiveStatus.ts` is deliberately silent when it's unset: the
+Status section's live badge just never renders, with no error and no
+stuck spinner. That silence becomes a trap once you *do* set it:
+pointing it at a local `api/` looks exactly like leaving it unset when
+the read is failing, because the usual cause is CORS — the API sends no
+CORS headers to any origin until `CORS_ORIGINS` includes
+`http://localhost:5173`, and `curl http://localhost:3000/commitments/...`
+will happily return 200 while the browser blocks the fetch. See
+[`../api/README.md`](../api/README.md)'s Setup and CORS sections.
+
+Before pushing, the checks CI runs (`.github/workflows/site.yml`):
+`npx tsc -b --noEmit`, `npm run lint`, `npm run build`.
 
 Static hosts receive `public/404.html` in the built `dist/` directory. It
 replaces the generic host/Vite not-found response with a branded explanation
