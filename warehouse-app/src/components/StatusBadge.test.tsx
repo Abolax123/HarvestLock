@@ -42,6 +42,12 @@ describe("StatusBadge", () => {
       expect(el).toHaveAttribute("data-status", s);
     }
   });
+
+  it("renders an unrecognized status string (future contract version) instead of a blank badge", () => {
+    render(<StatusBadge status="Advance3Released" />);
+    expect(screen.getByText("Advance3Released")).toBeInTheDocument();
+    expect(screen.getByText("Advance3Released")).toHaveAttribute("data-status", "Advance3Released");
+  });
 });
 
 // The status -> colour mapping lives in index.css, not in this component,
