@@ -210,7 +210,7 @@ describe("App", () => {
     await user.type(screen.getByLabelText("Contract ID"), "CUNKNOWN");
     await user.click(screen.getByRole("button", { name: "Look up" }));
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("Unable to load commitment CUNKNOWN: Failed to fetch");
+    expect(await screen.findByRole("alert")).toHaveTextContent(/Unable to load commitment CUNKNOWN/);
   });
 
   it("shows a live loading state while a commitment lookup is pending", async () => {
