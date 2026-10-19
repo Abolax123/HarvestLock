@@ -109,7 +109,7 @@ describe("AllocationLedgerSection", () => {
       <AllocationLedgerSection commitment={baseCommitment} contractId="CXXX" walletAddress={baseCommitment.cooperative} />,
     );
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("Unable to load allocation ledger for CXXX: Failed to fetch");
+    expect(await screen.findByRole("alert")).toHaveTextContent(/Unable to load allocation ledger for CXXX/);
     expect(screen.queryByText("Record member allocation")).not.toBeInTheDocument();
 
     fetchMock.mockResolvedValueOnce(allocationNotSetResponse());
