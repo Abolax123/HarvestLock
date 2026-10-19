@@ -409,12 +409,35 @@ above, so this can't quietly break again.
 
 ## Setup
 
+Requires Node.js 20.19+ (or 22.12+) and PostgreSQL. To run a local
+PostgreSQL 16 instance with the credentials used by `.env.example`:
+
+```sh
+docker run --name harvestlock-postgres \
+  -e POSTGRES_PASSWORD=harvestlock \
+  -e POSTGRES_DB=harvestlock \
+  -p 5432:5432 -d postgres:16
 ```
+
+Wait for PostgreSQL to accept connections before running the migration:
+`docker exec harvestlock-postgres pg_isready -U postgres -d harvestlock`.
+The container's default user is `postgres`, matching the example
+`DATABASE_URL`. If you already have PostgreSQL, create the `harvestlock`
+database and set `DATABASE_URL` in `.env` to match your local credentials.
+
+From the repository root:
+
+```
+cd api
 npm install
-cp .env.example .env   # fill in DATABASE_URL, ESCROW_WASM_HASH, DEPLOYER_SECRET_KEY
+cp .env.example .env
 npm run migrate
 npm run dev
 ```
+
+`DATABASE_URL` is required for the migration and normal API reads. The
+server can start without `ESCROW_WASM_HASH` and `DEPLOYER_SECRET_KEY`, but
+both are required by `POST /commitments/deploy`.
 
 `ESCROW_WASM_HASH` is the SHA-256 of the built escrow WASM — get it via
 `sha256sum` on `HarvestLock-Contracts/target/wasm32v1-none/release/harvestlock_escrow.wasm`,
