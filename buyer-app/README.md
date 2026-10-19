@@ -15,7 +15,7 @@ pilot; don't build that speculatively before one exists.
 ## Setup
 
 ```
-npm install
+npm ci
 cp .env.example .env   # only needed if the API isn't on localhost:3000
 npm run dev
 ```
