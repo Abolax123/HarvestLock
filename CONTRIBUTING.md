@@ -12,6 +12,19 @@ New to the project or to Soroban? Follow the [first-PR walkthrough](./docs/first
 
 ## Local setup
 
+### Pre-commit checks
+
+Enable the repository's pre-commit hook once per checkout:
+
+```bash
+git config core.hooksPath .githooks
+```
+
+The hook checks staged files for whitespace errors and runs the existing
+Oxlint command for any changed frontend workspace. Install that workspace's
+dependencies with `npm ci` before committing frontend changes. It does not
+rewrite files or add another formatter dependency.
+
 **Contracts** (Rust, Soroban) — see [`HarvestLock-Contracts/README.md`](https://github.com/Agrisettle/HarvestLock-Contracts/blob/main/README.md). Short version: `cargo test` needs only Rust; `stellar contract build`/deploy needs the Stellar CLI.
 
 **Site** (`site/`, React/Vite):
@@ -42,9 +55,13 @@ Both need `api/` running to show real data — see each app's `README.md`.
 
 Conventional-commit-ish (`feat:`, `fix:`, `docs:`, `refactor:`) with a body explaining *why*, not just what — this repo's history is written to be read later, not just skimmed in a PR diff. Look at recent commits in any of the repos under [Agrisettle](https://github.com/Agrisettle) for the tone.
 
+## Releases
+
+The release workflow reads Conventional Commit messages on `main` and opens or updates a release pull request with the root `CHANGELOG.md` and project version. Review and merge that pull request to accept the generated changelog. This project-level version is separate from the independently versioned apps; the workflow does not publish packages or create GitHub releases.
+
 ## CI
 
-Contract tests, and typecheck/lint/build/test for `site/`, `api/`, `coop-pwa/`, `buyer-app/`, and `warehouse-app/`, run automatically on every push and PR (path-scoped — touching one component doesn't trigger the others). `api/`'s CI runs its network-free tests (`server.test.ts`/`reputation.test.ts`, against a real Postgres service container) but does *not* run its live-testnet test suite (`api/test/stellar.test.ts`) — that needs a funded key as a repo secret, a decision not yet made safely for a fork-triggerable workflow (see [issue #10](https://github.com/Agrisettle/HarvestLock/issues/10)); run it locally instead. A red check means something real broke — fix the cause, don't disable the check.
+Contract tests, and typecheck/lint/build/test for `site/`, `api/`, `coop-pwa/`, `buyer-app/`, and `warehouse-app/`, run automatically on every push and PR (path-scoped — touching one component doesn't trigger the others). Dependency Review also runs for every PR and checks newly introduced dependencies against the permissive SPDX license allowlist in `.github/dependency-review-config.yml`. A license outside that list needs maintainer review before the dependency is added; update the list only after that review. `api/`'s CI runs its network-free tests (`server.test.ts`/`reputation.test.ts`, against a real Postgres service container) but does *not* run its live-testnet test suite (`api/test/stellar.test.ts`) — that needs a funded key as a repo secret, a decision not yet made safely for a fork-triggerable workflow (see [issue #10](https://github.com/Agrisettle/HarvestLock/issues/10)); run it locally instead. A red check means something real broke — fix the cause, don't disable the check.
 
 ## Security
 
