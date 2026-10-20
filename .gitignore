@@ -12,10 +12,10 @@ storybook-static/
 .env
 .env.*
 !.env.example
+temp_auto_push.bat
 *.tsbuildinfo
 
 # Editors / OS
-.vscode/
 .idea/
 .DS_Store
 Thumbs.db
@@ -28,3 +28,5 @@ npm-debug.log*
 # Playwright (e2e)
 test-results/
 playwright-report/
+.gitignore
+branch_structure.json
