@@ -28,3 +28,6 @@ npm-debug.log*
 # Playwright (e2e)
 test-results/
 playwright-report/
+
+# Python bytecode (CI scanner self-tests)
+__pycache__/
