@@ -68,6 +68,9 @@ A Mermaid sequence diagram of the full three-party `reassign_buyer` walk
 (propose → each other party signs → finalize → submit), with per-step
 file/line references and the enforced edge cases, is in
 [`docs/reassign-buyer-sequence.md`](./docs/reassign-buyer-sequence.md).
+The `flag_dispute` (single-signer) → `resolve_dispute` (three-party staged) →
+`expire_dispute_window` (escalation) flow has its own diagram in
+[`docs/dispute-sequence.md`](./docs/dispute-sequence.md).
 
 1. **Propose** — `POST /commitments/:contractId/tx/cancel/propose { proposerPublicKey }`
    or `POST /commitments/:contractId/tx/reassign-buyer/propose { proposerPublicKey, newBuyer }`.
