@@ -73,4 +73,24 @@ describe("AddressChip", () => {
     await waitFor(() => expect(writeText).toHaveBeenCalledWith(ADDRESS));
     expect(screen.queryByRole("button", { name: "Copied" })).not.toBeInTheDocument();
   });
+
+  it("degrades gracefully when the Clipboard API is unavailable (e.g. non-HTTPS context)", () => {
+    Object.defineProperty(navigator, "clipboard", {
+      value: undefined,
+      configurable: true,
+    });
+    const onRowClick = vi.fn();
+    render(
+      <div onClick={onRowClick}>
+        <AddressChip address={ADDRESS} />
+      </div>,
+    );
+    expect(() => fireEvent.click(screen.getByRole("button", { name: "Copy" }))).not.toThrow();
+    expect(screen.queryByRole("button", { name: "Copied" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Copy" })).toBeInTheDocument();
+    // The full address is still reachable via the tooltip, and the click
+    // still doesn't leak to a clickable parent row.
+    expect(screen.getByTitle(ADDRESS)).toBeInTheDocument();
+    expect(onRowClick).not.toHaveBeenCalled();
+  });
 });
