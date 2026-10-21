@@ -154,6 +154,10 @@ The OpenAPI 3.1 description is in [`openapi.yaml`](./openapi.yaml). It is
 checked against the route registrations in `src/server.ts`; update it in
 the same change whenever an endpoint or request/response shape changes.
 
+A Postman/Insomnia collection with a request for every route lives in
+[`postman/`](./postman/README.md); `test/postmanCollection.test.ts` fails if it
+drifts from `src/server.ts`.
+
 | Method | Path | What it does |
 |---|---|---|
 | GET | `/health` | Liveness check. |
