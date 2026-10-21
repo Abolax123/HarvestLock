@@ -26,12 +26,49 @@
     <meta name="twitter:title" content="HarvestLock — Agricultural escrow on Stellar" />
     <meta name="twitter:description" content="A Stellar testnet prototype for agricultural forward-contract escrow. No production pilot or mainnet deployment is live yet." />
     <meta name="twitter:image" content="/og-image.png" />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,400&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap"
-      rel="stylesheet"
-    />
+
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "Organization",
+            "@id": "https://harvestlock.dev/#organization",
+            "name": "HarvestLock",
+            "url": "https://harvestlock.dev",
+            "logo": "https://harvestlock.dev/favicon.png",
+            "sameAs": [
+              "https://github.com/Agrisettle/HarvestLock",
+              "https://github.com/Agrisettle/.github",
+              "https://www.linkedin.com/company/agrisettle"
+            ],
+            "contactPoint": [
+              {
+                "@type": "ContactPoint",
+                "contactType": "inquiries",
+                "url": "mailto:hello@harvestlock.dev"
+              }
+            ],
+            "description": "HarvestLock is a Stellar testnet prototype for agricultural forward-contract escrow and settlement against independent warehouse receipts. No production pilot or mainnet deployment is live yet."
+          },
+          {
+            "@type": "SoftwareApplication",
+            "@id": "https://harvestlock.dev/#application",
+            "name": "HarvestLock",
+            "url": "https://harvestlock.dev",
+            "applicationCategory": "ProductivityApplication",
+            "operatingSystem": "Web",
+            "description": "Escrow infrastructure for agricultural forward contracts, settled against an independent warehouse receipt. A Stellar testnet prototype — no production pilot or mainnet deployment is live yet.",
+            "offers": {
+              "@type": "Offer",
+              "price": "0",
+              "priceCurrency": "USD"
+            },
+            "screenshot": "https://harvestlock.dev/og-image.png"
+          }
+        ]
+      }
+    </script>
     <title>HarvestLock</title>
   </head>
   <body>
