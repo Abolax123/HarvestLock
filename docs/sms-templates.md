@@ -56,6 +56,7 @@ status, so an SMS consumer must key off the event/action, not the status name.
 
 ## Translation notes
 
-The Igbo draft lives in [sms-templates.igbo.md](sms-templates.igbo.md). Yoruba
-and Hausa should follow the same event keys and placeholder names so the
-notification service can select a locale without branching on message shape.
+The Igbo draft lives in [sms-templates.igbo.md](sms-templates.igbo.md) and the
+Yoruba draft in [sms-templates.yoruba.md](sms-templates.yoruba.md). Hausa should
+follow the same event keys and placeholder names so the notification service
+can select a locale without branching on message shape.
