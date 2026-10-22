@@ -29,6 +29,29 @@
       ]
     },
     {
+      "name": "Version",
+      "description": "Build metadata for the deployed API.",
+      "item": [
+        {
+          "name": "Get build version",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/version",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "version"
+              ]
+            },
+            "description": "Returns the commit SHA and UTC build timestamp recorded during the API build."
+          }
+        }
+      ]
+    },
+    {
       "name": "Deploy and initialize",
       "description": "Create a fresh escrow instance and initialize it.",
       "item": [

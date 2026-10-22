@@ -161,6 +161,7 @@ drifts from `src/server.ts`.
 | Method | Path | What it does |
 |---|---|---|
 | GET | `/health` | Liveness check. |
+| GET | `/version` | Build-time commit SHA and UTC build timestamp. Does not depend on Postgres. |
 | POST | `/commitments/deploy` | Deploys a fresh, uninitialized escrow contract instance. Deployer-paid, no party auth. |
 | POST | `/commitments/:contractId/tx/initialize` | Builds unsigned `initialize` XDR. Must be signed by the intended buyer. Address fields are validated (`StrKey`) before building. Optionally takes `oracleConfig` (PRD §16.3 oracle staleness bound — see below); omit or pass `null` for a plain deal that needs no conversion. |
 | POST | `/commitments/:contractId/tx/reassign-buyer` | Builds unsigned `reassign_buyer` XDR. Needs three-party auth — see above. |

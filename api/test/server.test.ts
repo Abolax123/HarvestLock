@@ -90,6 +90,26 @@ afterAll(async () => {
 });
 
 describe("server (HTTP layer)", () => {
+  it("GET /version responds with build metadata without requiring a database read", async () => {
+    const priorCommit = process.env.RENDER_GIT_COMMIT;
+    const priorTimestamp = process.env.BUILD_TIMESTAMP;
+    process.env.RENDER_GIT_COMMIT = "test-commit-sha";
+    process.env.BUILD_TIMESTAMP = "2026-10-22T12:00:00.000Z";
+    try {
+      const res = await app.inject({ method: "GET", url: "/version" });
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toEqual({
+        commitSha: "test-commit-sha",
+        buildTimestamp: "2026-10-22T12:00:00.000Z",
+      });
+    } finally {
+      if (priorCommit === undefined) delete process.env.RENDER_GIT_COMMIT;
+      else process.env.RENDER_GIT_COMMIT = priorCommit;
+      if (priorTimestamp === undefined) delete process.env.BUILD_TIMESTAMP;
+      else process.env.BUILD_TIMESTAMP = priorTimestamp;
+    }
+  });
+
   it(
     "GET /health responds ok",
     async () => {
