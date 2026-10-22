@@ -24,6 +24,21 @@ paths:
                 required: [ok]
                 properties:
                   ok: { type: boolean, const: true }
+  /version:
+    get:
+      operationId: getVersion
+      summary: Get deployed build metadata
+      responses:
+        '200':
+          description: Commit SHA and UTC timestamp recorded by the API build.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [commitSha, buildTimestamp]
+                properties:
+                  commitSha: { type: string }
+                  buildTimestamp: { type: string, format: date-time }
   /commitments/deploy:
     post:
       operationId: deployCommitment

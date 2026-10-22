@@ -2,6 +2,7 @@ import Fastify from "fastify";
 import cors from "@fastify/cors";
 import rateLimit from "@fastify/rate-limit";
 import { STATUS_CODES } from "node:http";
+import { getBuildInfo } from "./buildInfo.js";
 import { StrKey, Address, nativeToScVal, xdr } from "@stellar/stellar-sdk";
 import { getAllocation, getCommitment, getOracleConfig, getOracleRate, type Commitment } from "./stellar/client.js";
 import { deployContractInstance, initializeArgs } from "./stellar/deploy.js";
@@ -380,6 +381,8 @@ export async function buildServer() {
     const ok = database === "ok";
     return reply.code(ok ? 200 : 503).send({ ok, checks: { api: "ok", database } });
   });
+
+  app.get("/version", async (_req, reply) => reply.send(getBuildInfo()));
 
   // Deploys a fresh, uninitialized contract instance (deployer-paid — no
   // party auth required for a bare deploy). The caller still has to drive
