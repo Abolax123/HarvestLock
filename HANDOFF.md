@@ -41,6 +41,15 @@ The `gh` CLI's active account on this development machine has silently switched 
 - Running a dev server with `&` inside a single Bash-tool call doesn't survive past that call on this machine — the child gets orphaned/killed when the tool call's own shell exits. Use the tool's own `run_in_background` on the server-start command itself (not wrapped with other commands), then hit it from separate calls.
 - **Multi-party Soroban auth** (a contract call needing more than one address's `require_auth()`, like `cancel`) is not "sign the transaction twice." Neither `stellar-cli`'s `tx sign --sign-with-key <second party>` nor `@stellar/stellar-sdk`'s `Transaction.sign()` called once per party works — both add an extra *classic envelope* signature and the network rejects the whole tx with `tx_bad_auth_extra`. The correct mechanism, worked out and proven live in `api/test/helpers.ts`: sign each non-source party's `SorobanAuthorizationEntry` individually via `authorizeEntry()`, then rebuild the operation/transaction around the signed entries (mutating the built transaction's `.operations` in place doesn't persist — it's a derived view). Also: a participating address's auth only verifies against a real, *funded/created* account — an unfunded keypair fails with a storage error, not a signature error.
 
+## Buyer-app CI follow-up — 23 Oct 2026
+
+Buyer-app CI checks generated JavaScript and CSS in `dist/assets/` against a
+350,000-byte budget after building. The measured production output is 265,840
+bytes on Node 24/npm 11. Typecheck, lint, all 109 buyer-app tests, build, and the
+budget check pass. The five lockfile-sync jobs also leave their lockfiles
+unchanged with the current Node 24/npm 11 workflow; the older Node 20/npm 10
+check with `--legacy-peer-deps` incorrectly rewrote peer-dependency entries.
+
 ## Next steps
 
 Check `SPRINT.md`'s day-by-day checklist first — it's the live tracker for this week. Beyond the sprint window, `ROADMAP.md` Phase 0 Track B (contracts) and the API/frontend work implied by Phase 1 are the source of truth.

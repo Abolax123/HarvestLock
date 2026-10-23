@@ -29,8 +29,8 @@ The buyer-app CI build runs `npm run check:bundle-size` after Vite builds
 the app. The check adds the raw byte sizes of every generated `.js` and
 `.css` file in `dist/assets/` and fails above **350,000 bytes**. It does
 not include source maps, HTML, images, or compression estimates. The
-budget gives the current published buyer bundle (262,638 JavaScript and
-CSS bytes) about one-third of headroom while making bundle growth visible
+budget gives the current production build (265,840 JavaScript and CSS
+bytes, measured with Node 24/npm 11) about 32% headroom while making bundle growth visible
 in the same CI run as the build. Update the budget only with a reviewed
 reason and a new measured baseline.
 
