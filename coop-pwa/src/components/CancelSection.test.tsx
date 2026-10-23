@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { CancelSection } from "./CancelSection";
 import type { CommitmentDetail } from "../api";
@@ -64,6 +64,10 @@ beforeEach(() => {
   vi.stubGlobal("fetch", fetchMock);
   vi.mocked(wallet.signAuthEntry).mockReset();
   vi.mocked(wallet.signTransactionXdr).mockReset();
+});
+
+afterEach(() => {
+  vi.useRealTimers();
 });
 
 describe("CancelSection", () => {
@@ -190,6 +194,53 @@ describe("CancelSection", () => {
     const submitCall = fetchMock.mock.calls.find(([url]) => String(url).endsWith("/transactions/submit"));
     expect(submitCall).toBeDefined();
     expect(String(submitCall?.[1]?.body)).toContain("prop-1"); // completeProposalId included
+  });
+
+  it("stops the 10-second proposal poll once it becomes this viewer's own turn to finalize", async () => {
+    // Only the interval is faked: the initial fetch and the findBy* helpers
+    // still run on real timers and microtasks.
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+
+    const pendingProposal = {
+      id: "prop-1",
+      contract_id: "CXXX",
+      proposer_address: baseCommitment.cooperative,
+      status: "pending",
+      pending_entries: [{ address: baseCommitment.buyer, entry_xdr: "ENTRY_XDR" }],
+      ready_xdr: null,
+    };
+    const readyProposal = { ...pendingProposal, status: "ready", pending_entries: [], ready_xdr: "READY_XDR" };
+    fetchMock.mockResolvedValueOnce(jsonResponse({ proposal: pendingProposal })); // initial load
+
+    render(
+      <CancelSection
+        commitment={baseCommitment}
+        contractId="CXXX"
+        walletAddress={baseCommitment.cooperative}
+        onCancelled={vi.fn()}
+      />,
+    );
+
+    // Waiting on the other party: the poll is running.
+    expect(await screen.findByText(/waiting for the other party to approve/i)).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(vi.getTimerCount()).toBe(1);
+
+    // The other party approves in the background; the next poll sees "ready".
+    fetchMock.mockResolvedValue(jsonResponse({ proposal: readyProposal }));
+    await act(async () => {
+      vi.advanceTimersByTime(10_000);
+    });
+
+    expect(await screen.findByRole("button", { name: "Finalize cancellation" })).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+
+    // Now it's this viewer's turn to act, so nothing should poll any more.
+    expect(vi.getTimerCount()).toBe(0);
+    await act(async () => {
+      vi.advanceTimersByTime(60_000);
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
   it("shows an error banner, not a crash, if approving is rejected", async () => {

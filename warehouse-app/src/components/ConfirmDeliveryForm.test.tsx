@@ -56,6 +56,33 @@ describe("ConfirmDeliveryForm", () => {
     expect(onSubmit).toHaveBeenCalledWith(500, 1);
   });
 
+  it("submits an over-delivery instead of blocking it; the contract caps settlement at 100%", async () => {
+    const user = userEvent.setup();
+    const onSubmit = vi.fn();
+    render(
+      <ConfirmDeliveryForm
+        contractedQuantity={1000}
+        gradePriceBps={GRADE_PRICE_BPS}
+        onSubmit={onSubmit}
+        submitting={false}
+        submitError={null}
+      />,
+    );
+
+    await user.clear(screen.getByLabelText("Delivered quantity"));
+    await user.type(screen.getByLabelText("Delivered quantity"), "1200");
+
+    const submit = screen.getByRole("button", { name: "Confirm delivery" });
+    expect(submit).toBeEnabled();
+    await user.click(submit);
+
+    // The form passes the attested quantity through unchanged. The contract
+    // computes settlement_bps from min(delivered, contracted), so 1200 against
+    // a 1000-unit commitment settles at the same 100% cap as 1000 — it is not
+    // a form-level validation error.
+    expect(onSubmit).toHaveBeenCalledWith(1200, 0);
+  });
+
   it("disables submit while a negative or non-integer quantity is entered", async () => {
     const user = userEvent.setup();
     const onSubmit = vi.fn();
