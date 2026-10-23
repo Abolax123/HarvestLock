@@ -28,7 +28,7 @@ Component-scoped handoff, same structure as `HarvestLock-Contracts/HANDOFF.md`. 
 - **The appeals process itself** — a barred party can email `samuelojetunde898@gmail.com` (user-supplied, confirmed for this exact purpose) to contest a bar; the contact is documented on `site/roles.html`. No inbox automation, no ticketing/reinstatement workflow here yet (matches this project's bias against over-building ahead of real usage) — reinstating a barred address today means a human directly updating `party_standing`, not a self-service flow.
 - **`allocation_members` table / off-chain identity map** (PRD §16.1) — no schema, no code. Needs the salt-scheme decision from `TASKS.md`'s contracts section resolved first; this is compliance-load-bearing, not just a missing table.
 - **A single "create commitment" convenience endpoint** — today, creating a commitment is three calls (`POST /commitments/deploy`, `POST /commitments/:id/tx/initialize`, `POST /transactions/submit`), not one. Left this way on purpose: the buyer has to sign `initialize` with their own wallet, so a one-call version can't exist without either the API holding the buyer's key (rejected, see below) or the frontend doing the multi-step dance anyway. Don't collapse this into one call unless the signing model changes.
-- **No background cache refresher** — `GET /commitments` can go stale for a contract nobody has read via `GET /commitments/:contractId` recently, since the cache only refreshes on read or on this API's own writes. Fine for now (no real users yet); revisit once something else can also mutate a contract without going through this API.
+- **No background cache refresher** — `GET /commitments` can go stale for a contract nobody has read via `GET /commitments/:contractId` recently, since the cache only refreshes on read or on this API's own writes. Fine for now (no real users yet); revisit once something else can also mutate a contract without going through this API. **Revisited 18 Oct 2026 (#186): still holds** — the deferral's trigger is now technically reachable (permissionless `expire_*` methods, direct wallet/CLI submission), but every product write path still refreshes the cache and there are no real users; `../docs/audits/2026-10-18-commitments-cache-refresh-revisit.md` has the evidence, the concrete triggers that would flip the decision, and a pre-scoped smallest implementation.
 - **Auth/sessions** — none. Matches PRD's MVP framing (no auth, no multi-tenant), but the data model doesn't assume a single user, so this can be layered on later.
 - **Voucher issuance/redemption, warehouse receipt attestation intake, SDP integration** — mentioned in the original `api/README.md` placeholder as eventual scope; nothing built.
 - **A "Propose reassignment" UI for `reassign_buyer`** — the API side is fully built and live-tested (see above), same as `cancel`'s was before its UI landed; neither `coop-pwa` nor `buyer-app` has any UI for `reassign_buyer` at all yet (not even a single-signer form), so this needs more than what `cancel`'s `CancelSection.tsx` needed — a form to collect the new buyer's address, not just a propose/approve/finalize state machine.
@@ -66,7 +66,30 @@ During `coop-pwa`'s browser check, one `GET /commitments/:contractId` call faile
 11. ~~Wire the contract's dispute-flagging methods (`flag_dispute`/`resolve_dispute`/`expire_dispute_window`)~~ — **done, API side**, 6 Sept 2026: see above. ~~No frontend has any UI for flagging or resolving a dispute yet~~ — **done**, 8 Sept 2026: `DisputeSection.tsx`, identical across `buyer-app`/`coop-pwa`/`warehouse-app` — see `TASKS.md`.
 
 ---
-*Last updated: 4 Oct 2026 (later same day) — `coop-pwa` now has a real UI
+*Last updated: 18 Oct 2026 — docs session covering four separate issues.
+(1) New `docs/reassign-buyer-sequence.md`: a Mermaid sequence diagram of
+the three-party `reassign_buyer` propose/sign/finalize flow, with
+per-step file references and the enforced edge cases, checked against
+this repo's routes/multiParty/db code and the contract's
+`reassign_buyer`/`require_once_each` rather than written from memory.
+(2) New repo-root `docs/contract-glossary.md`: every contract `Status`
+(12) and `Error` (38) variant in one plain-English sentence, verified
+against `HarvestLock-Contracts` main's `lib.rs`; notes the append-only
+discriminant guard and that the deployed Deployment 10 WASM predates
+errors 37–38. (3) A "Curl-only cookbook" section in `README.md`:
+read-only calls are pure `curl`, writes are `curl` + `stellar-cli`
+signing, and the staged multi-party middle step is called out honestly
+as not completable without an auth-entry-capable wallet. Writing it
+surfaced a real stale-comment bug fixed here: `server.ts`'s
+`NO_ARG_METHODS` comments still claimed `cancel`/`resolve_dispute` work
+by signing the same envelope once per wallet — they don't
+(`tx_bad_auth_extra`, documented in `README.md` since the staged flow
+landed) — corrected to point at the staged propose/sign routes.
+(4) `buyer-app`'s `CommitmentList.tsx` now owns all three list states
+(loading/error/empty) instead of `App.tsx` mounting it only on success,
+which had left first load blank; see `buyer-app/README.md`.
+
+Prior entry (4 Oct 2026, later same day) — `coop-pwa` now has a real UI
 for the allocation ledger (`AllocationLedgerSection.tsx`) — see "next
 steps" item 9 above and `coop-pwa/README.md`. Same category of gap as
 the entry below: PRD §4.8/§16.1's per-member salted-hash ledger has been
