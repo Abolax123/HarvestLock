@@ -83,6 +83,15 @@ jobs:
       - name: npm ci
         run: npm ci
 
+      # Fails the job on a high or critical advisory in anything npm ci just
+      # installed (runtime and dev dependencies alike: dev tooling runs in CI
+      # with this job's token). Moderate and low advisories are reported by
+      # `npm audit` locally but do not fail the build. Added inside this job
+      # rather than as a new one so the required check name is unchanged.
+      - name: npm audit (fail on high or critical)
+        run: npm audit --audit-level=high
+
+
       - name: typecheck
         run: npm run typecheck
 
