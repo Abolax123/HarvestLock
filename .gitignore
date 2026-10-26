@@ -9,13 +9,10 @@ dist/
 gh-pages-dist/
 build/
 storybook-static/
-.env
-.env.*
 !.env.example
 *.tsbuildinfo
 
 # Editors / OS
-.vscode/
 .idea/
 .DS_Store
 Thumbs.db
@@ -31,3 +28,4 @@ playwright-report/
 
 # Python bytecode (CI scanner self-tests)
 __pycache__/
+config.bat
